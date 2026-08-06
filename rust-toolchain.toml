@@ -1,0 +1,9 @@
+# Recommended toolchain for full feature set (including LibAFL).
+# Local Cargo 1.75 / older toolchains cannot build --features libafl
+# because transitive deps (e.g. getrandom 0.4) require edition2024.
+# Use GitHub Actions artifacts, or install:
+#   rustup toolchain install 1.87.0
+#   rustup default 1.87.0
+[toolchain]
+channel = "1.87.0"
+components = ["rustfmt", "clippy"]

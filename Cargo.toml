@@ -1,0 +1,39 @@
+[package]
+name = "nexsiz"
+version = "0.1.0"
+edition = "2021"
+authors = ["Revana"]
+description = "Nexsiz - Next-generation stateful network protocol fuzzer with semantic-preserving mutation, adaptive connection reuse, and hybrid state awareness"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["fuzzer", "network", "protocol", "stateful", "redteam", "offensive"]
+categories = ["development-tools", "network-programming"]
+
+[[bin]]
+name = "nexsiz"
+path = "src/main.rs"
+
+[lib]
+name = "nexsiz"
+path = "src/lib.rs"
+
+[features]
+default = []
+libafl = ["dep:libafl", "dep:libafl_bolts", "dep:serde"]
+
+[dependencies]
+libc = "0.2"
+
+libafl = { version = "0.15.4", optional = true, default-features = false, features = ["std"] }
+libafl_bolts = { version = "0.15.4", optional = true, default-features = false, features = ["std"] }
+serde = { version = "1", optional = true, features = ["derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+strip = true
+
+[profile.dev]
+opt-level = 1

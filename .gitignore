@@ -1,0 +1,43 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Output / corpus / logs produced by fuzzing campaigns
+/output/
+**/output/
+*.log
+nexsiz.log
+
+# Crash / hang artifacts
+**/crashes/
+**/hangs/
+**/queue/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local config overrides (optional secrets)
+*.local.conf
+.env
+.env.*
+
+# Temporary / debug
+*.tmp
+*.bak
+*.orig
+core
+core.*
+
+# Coverage / profiling
+*.profraw
+*.profdata
+lcov.info
+coverage/
+
+# OS
+Thumbs.db
