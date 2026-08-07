@@ -1,15 +1,19 @@
 //! NEXSIZ – Hierarchical mutator engine with protocol-aware integrity
 //! Author  : Revana
-//! Date    : 06/08/2026
+//! Date    : 07/08/2026
 //!
 //! Integrity repair is OPTIONAL inside the mutator. Production workers
 //! centralise repair ownership in the worker loop (IntegrityBridge |
 //! model-name fallback) so Python bridges never double-repair.
+//!
+//! Phase 2: field-aware mutation — when ProtocolModel carries MessageSpec /
+//! FieldSpec, the mutator prefers known values, respects fixed size, and
+//! avoids destructive edits on protected / length / checksum fields.
 
 use crate::common::types::*;
 use crate::common::utils::XorShift64;
 use crate::input::integrity;
-use crate::input::model::ProtocolModel;
+use crate::input::model::{FieldSpec, ProtocolModel};
 
 /// Main mutator state.
 #[derive(Debug)]
@@ -59,15 +63,16 @@ impl Mutator {
 
     /// Merge extra dictionary tokens (from MutatorBridge). Deduplicates.
     pub fn extend_dictionary(&mut self, extra: &[Vec<u8>]) {
-        for t in extra {
-            if !t.is_empty() && !self.model.dictionary.iter().any(|d| d == t) {
-                self.model.dictionary.push(t.clone());
-            }
-        }
+        self.model.extend_dictionary(extra);
     }
 
     pub fn dictionary_len(&self) -> usize {
         self.model.dictionary.len()
+    }
+
+    /// Replace the underlying model (e.g. after inference enrichment).
+    pub fn set_model(&mut self, model: ProtocolModel) {
+        self.model = model;
     }
 
     pub fn mutate(&mut self, parent: &TestCase, new_id: SeedId) -> TestCase {
@@ -89,6 +94,9 @@ impl Mutator {
                 self.mutate_message_level(&mut child);
             }
         }
+
+        // Enforce fixed-size constraints after mutation
+        self.enforce_size_constraints(&mut child);
 
         if self.repair {
             integrity::prepare_for_send(&mut child, &self.model.name);
@@ -142,7 +150,12 @@ impl Mutator {
         match self.rng.next_usize(3) {
             0 => {
                 let fidx = self.rng.next_usize(msg.fields.len());
-                if !msg.fields[fidx].protected {
+                if !msg.fields[fidx].protected
+                    && !matches!(
+                        msg.fields[fidx].ftype,
+                        FieldType::Length | FieldType::Checksum
+                    )
+                {
                     let field = msg.fields[fidx].clone();
                     let insert_at = self.rng.next_usize(msg.fields.len() + 1);
                     msg.fields.insert(insert_at, field);
@@ -154,7 +167,10 @@ impl Mutator {
                         .fields
                         .iter()
                         .enumerate()
-                        .filter(|(_, f)| !f.protected)
+                        .filter(|(_, f)| {
+                            !f.protected
+                                && !matches!(f.ftype, FieldType::Length | FieldType::Checksum)
+                        })
                         .map(|(i, _)| i)
                         .collect();
                     if !candidates.is_empty() {
@@ -164,8 +180,14 @@ impl Mutator {
                 }
             }
             _ => {
+                // Prefer FieldSpec.values or model dictionary
                 let fidx = self.rng.next_usize(msg.fields.len());
-                if !msg.fields[fidx].protected && !self.model.dictionary.is_empty() {
+                if msg.fields[fidx].protected {
+                    return;
+                }
+                if let Some(val) = self.pick_spec_value(&msg.fields[fidx].name) {
+                    msg.fields[fidx].data = val;
+                } else if !self.model.dictionary.is_empty() {
                     let dict_item =
                         &self.model.dictionary[self.rng.next_usize(self.model.dictionary.len())];
                     msg.fields[fidx].data = dict_item.clone();
@@ -184,48 +206,122 @@ impl Mutator {
             return;
         }
 
+        // Prefer mutable non-protected, non-integrity fields
         let candidates: Vec<usize> = msg
             .fields
             .iter()
             .enumerate()
-            .filter(|(_, f)| !f.protected && !f.data.is_empty())
+            .filter(|(_, f)| {
+                !f.protected
+                    && !f.data.is_empty()
+                    && !matches!(f.ftype, FieldType::Length | FieldType::Checksum)
+            })
             .map(|(i, _)| i)
             .collect();
 
         if candidates.is_empty() {
+            // Fall back to any non-protected field
+            let fallback: Vec<usize> = msg
+                .fields
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| !f.protected && !f.data.is_empty())
+                .map(|(i, _)| i)
+                .collect();
+            if fallback.is_empty() {
+                return;
+            }
+            let fidx = fallback[self.rng.next_usize(fallback.len())];
+            self.mutate_one_field(&mut msg.fields[fidx]);
             return;
         }
 
         let fidx = candidates[self.rng.next_usize(candidates.len())];
-        let field = &mut msg.fields[fidx];
+        self.mutate_one_field(&mut msg.fields[fidx]);
+    }
 
-        if self.rng.next_bool(self.dict_prob) && !self.model.dictionary.is_empty() {
-            let dict_item =
-                &self.model.dictionary[self.rng.next_usize(self.model.dictionary.len())];
-            match self.rng.next_usize(3) {
-                0 => field.data = dict_item.clone(),
-                1 => {
-                    let off = self.rng.next_usize(field.data.len() + 1);
-                    let mut new_data = Vec::with_capacity(field.data.len() + dict_item.len());
-                    new_data.extend_from_slice(&field.data[..off]);
-                    new_data.extend_from_slice(dict_item);
-                    new_data.extend_from_slice(&field.data[off..]);
-                    field.data = new_data;
-                }
-                _ => field.data.extend_from_slice(dict_item),
+    fn mutate_one_field(&mut self, field: &mut Field) {
+        // Prefer known values from FieldSpec when available
+        if self.rng.next_bool(self.dict_prob) {
+            if let Some(val) = self.pick_spec_value(&field.name) {
+                field.data = val;
+                return;
             }
-            return;
+            if !self.model.dictionary.is_empty() {
+                let dict_item =
+                    &self.model.dictionary[self.rng.next_usize(self.model.dictionary.len())];
+                match self.rng.next_usize(3) {
+                    0 => field.data = dict_item.clone(),
+                    1 => {
+                        let off = self.rng.next_usize(field.data.len() + 1);
+                        let mut new_data = Vec::with_capacity(field.data.len() + dict_item.len());
+                        new_data.extend_from_slice(&field.data[..off]);
+                        new_data.extend_from_slice(dict_item);
+                        new_data.extend_from_slice(&field.data[off..]);
+                        field.data = new_data;
+                    }
+                    _ => field.data.extend_from_slice(dict_item),
+                }
+                return;
+            }
         }
 
+        // For fixed-size Numeric / Command prefer in-place byte mutations
+        let fixed = field.size;
         match self.rng.next_usize(8) {
             0 => self.bit_flip(field),
             1 => self.byte_flip(field),
             2 => self.arithmetic(field),
             3 => self.interesting_byte(field),
-            4 => self.delete_bytes(field),
-            5 => self.insert_bytes(field),
+            4 if fixed.is_none() => self.delete_bytes(field),
+            5 if fixed.is_none() => self.insert_bytes(field),
             6 => self.overwrite_bytes(field),
-            _ => self.random_bytes(field),
+            _ => {
+                if fixed.is_some() {
+                    self.random_bytes_fixed(field, fixed.unwrap());
+                } else {
+                    self.random_bytes(field);
+                }
+            }
+        }
+    }
+
+    /// Look up interesting values for a field name from model MessageSpecs.
+    fn pick_spec_value(&mut self, field_name: &str) -> Option<Vec<u8>> {
+        let name_l = field_name.to_ascii_lowercase();
+        for msg in &self.model.messages {
+            for fs in &msg.fields {
+                if fs.name.to_ascii_lowercase() == name_l && !fs.values.is_empty() {
+                    let idx = self.rng.next_usize(fs.values.len());
+                    return Some(fs.values[idx].clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// After mutation, pad or truncate fields that have a fixed size in the model
+    /// or on the Field itself.
+    fn enforce_size_constraints(&self, tc: &mut TestCase) {
+        for msg in &mut tc.messages {
+            for field in &mut msg.fields {
+                if let Some(sz) = field.size {
+                    enforce_len(&mut field.data, sz);
+                    continue;
+                }
+                // Also check MessageSpec for this field name
+                let name_l = field.name.to_ascii_lowercase();
+                for mspec in &self.model.messages {
+                    for fs in &mspec.fields {
+                        if fs.name.to_ascii_lowercase() == name_l {
+                            if let Some(sz) = fs.size {
+                                enforce_len(&mut field.data, sz);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -306,12 +402,24 @@ impl Mutator {
         };
         field.data = (0..len).map(|_| self.rng.next_u32() as u8).collect();
     }
+
+    fn random_bytes_fixed(&mut self, field: &mut Field, size: usize) {
+        field.data = (0..size).map(|_| self.rng.next_u32() as u8).collect();
+    }
+}
+
+fn enforce_len(data: &mut Vec<u8>, size: usize) {
+    if data.len() > size {
+        data.truncate(size);
+    } else if data.len() < size {
+        data.resize(size, 0);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::model::ProtocolModel;
+    use crate::input::model::{FieldSpec, MessageSpec, ProtocolModel};
 
     fn sample_tc() -> TestCase {
         let mut msg = Message::new("m");
@@ -350,5 +458,19 @@ mod tests {
         assert!(mutator.repair_enabled());
         mutator.set_repair(false);
         assert!(!mutator.repair_enabled());
+    }
+
+    #[test]
+    fn enforce_fixed_size() {
+        let mut model = ProtocolModel::generic();
+        model.messages = vec![MessageSpec::new("frame").field(
+            FieldSpec::new("len", FieldType::Length).with_size(2),
+        )];
+        let mut mutator = Mutator::new(7, model, 3, 0.0, 1.0, 0.0, false);
+        let mut msg = Message::new("frame");
+        msg.add_field(Field::new("len", FieldType::Length, vec![0, 0, 0, 0]).with_size(2));
+        let parent = TestCase::new(1, vec![msg]);
+        let child = mutator.mutate(&parent, 2);
+        assert_eq!(child.messages[0].fields[0].data.len(), 2);
     }
 }
