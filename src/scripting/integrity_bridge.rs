@@ -1,7 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 06/08/2026
+//! Date    : 07/08/2026
 //! Files   : nexsiz/src/scripting/integrity_bridge.rs
 //!
 //! Python Integrity repair bridge (push strategy)
