@@ -1,7 +1,10 @@
-//! Python Integrity repair bridge (push strategy)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
 //! Date    : 06/08/2026
+//! Files   : nexsiz/src/scripting/integrity_bridge.rs
 //!
+//! Python Integrity repair bridge (push strategy)
 //! Python selects a repair strategy by name. Workers apply
 //! resolve_integrity(strategy).prepare_for_send() after mutation.
 //! Zero reverse-RPC on the hot path.
