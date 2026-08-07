@@ -251,7 +251,7 @@ Apache License 2.0. Intended for operational use by offensive security teams.
 
 ## nexsiz document
 
-[![Blogs](https://img.shields.io/badge/Blog-nexsiz--blogs-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
+[![Blogs](https://img.shields.io/badge/nexsiz--blogs-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
 
 ## Author
 
