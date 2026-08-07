@@ -1,0 +1,33 @@
+{
+  "name": "dns",
+  "length_prefixed": true,
+  "length_width": 2,
+  "endian": "be",
+  "delimiter": null,
+  "dictionary": [
+    "\\x01\\x00",
+    "\\x00\\x01",
+    "\\x00\\x1c",
+    "\\x00\\x0f",
+    "\\x00\\x10",
+    "\\x00\\xff",
+    "\\x03www\\x07example\\x03com\\x00"
+  ],
+  "messages": [
+    {
+      "name": "query",
+      "fields": [
+        { "name": "tcp_len", "type": "Length", "size": 2, "endian": "be" },
+        { "name": "txid", "type": "Numeric", "size": 2 },
+        { "name": "flags", "type": "Numeric", "size": 2 },
+        { "name": "qdcount", "type": "Numeric", "size": 2 },
+        { "name": "ancount", "type": "Numeric", "size": 2 },
+        { "name": "nscount", "type": "Numeric", "size": 2 },
+        { "name": "arcount", "type": "Numeric", "size": 2 },
+        { "name": "qname", "type": "Binary" },
+        { "name": "qtype", "type": "Numeric", "size": 2 },
+        { "name": "qclass", "type": "Numeric", "size": 2 }
+      ]
+    }
+  ]
+}

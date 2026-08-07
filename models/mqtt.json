@@ -1,0 +1,43 @@
+{
+  "name": "mqtt",
+  "length_prefixed": true,
+  "endian": "be",
+  "dictionary": [
+    "\\x10",
+    "\\x30",
+    "\\x80",
+    "\\xc0",
+    "\\xe0",
+    "MQTT",
+    "\\x04",
+    "\\x05",
+    "test/topic",
+    "#",
+    "+"
+  ],
+  "messages": [
+    {
+      "name": "connect",
+      "fields": [
+        { "name": "fixed_hdr", "type": "Command", "size": 1, "values": ["\\x10"] },
+        { "name": "remaining_len", "type": "Length" },
+        { "name": "proto_name_len", "type": "Length", "size": 2 },
+        { "name": "proto_name", "type": "String", "values": ["MQTT"] },
+        { "name": "proto_level", "type": "Numeric", "size": 1 },
+        { "name": "connect_flags", "type": "Numeric", "size": 1 },
+        { "name": "keep_alive", "type": "Numeric", "size": 2 },
+        { "name": "client_id", "type": "String" }
+      ]
+    },
+    {
+      "name": "publish",
+      "fields": [
+        { "name": "fixed_hdr", "type": "Command", "size": 1, "values": ["\\x30"] },
+        { "name": "remaining_len", "type": "Length" },
+        { "name": "topic_len", "type": "Length", "size": 2 },
+        { "name": "topic", "type": "String" },
+        { "name": "payload", "type": "Binary" }
+      ]
+    }
+  ]
+}

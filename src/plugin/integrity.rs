@@ -1,6 +1,6 @@
 //! NEXSIZ – Protocol-Aware Integrity Repair plugins
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
 //!
 //! Trait + concrete repairers that apply the correct integrity strategy
 //! for each protocol family. Selected by name via Config / CLI.
@@ -180,8 +180,10 @@ impl IntegrityRepair for BinaryIntegrityRepair {
 ///   http | https         → HTTP Content-Length + framing
 ///   ftp                  → FTP CRLF
 ///   smtp                 → SMTP CRLF + DATA terminator
-///   binary | bin         → binary length-prefix + CRC32 (BE)
-///   binary-le | bin-le   → same, little-endian
+///   binary | bin | dns | mqtt | smb | binary-lp
+///                        → binary length-prefix + CRC32 (BE)
+///   binary-le | bin-le | binary-lp-le | lp-le
+///                        → same, little-endian
 ///
 /// When `name` is None the caller should pass the protocol model name
 /// so the right repairer is chosen automatically.
@@ -191,8 +193,19 @@ pub fn resolve_integrity(name: Option<&str>) -> Box<dyn IntegrityRepair> {
         Some("http") | Some("https") => Box::new(HttpIntegrityRepair),
         Some("ftp") => Box::new(FtpIntegrityRepair),
         Some("smtp") => Box::new(SmtpIntegrityRepair),
-        Some("binary") | Some("bin") => Box::new(BinaryIntegrityRepair::new()),
-        Some("binary-le") | Some("bin-le") => Box::new(BinaryIntegrityRepair::le()),
+        // Binary / length-prefix family (includes new protocol models)
+        Some("binary")
+        | Some("bin")
+        | Some("binary-lp")
+        | Some("lp")
+        | Some("dns")
+        | Some("mqtt")
+        | Some("smb")
+        | Some("cifs") => Box::new(BinaryIntegrityRepair::new()),
+        Some("binary-le")
+        | Some("bin-le")
+        | Some("binary-lp-le")
+        | Some("lp-le") => Box::new(BinaryIntegrityRepair::le()),
         Some("default") | None => Box::new(DefaultIntegrityRepair),
         // Unknown name → default (safe)
         Some(_) => Box::new(DefaultIntegrityRepair),
@@ -263,6 +276,13 @@ mod tests {
         assert_eq!(r.name(), "null");
         let r = resolve_integrity_for_protocol(None, Some("ftp"));
         assert_eq!(r.name(), "ftp");
+        // New models auto-map to binary
+        let r = resolve_integrity_for_protocol(None, Some("dns"));
+        assert_eq!(r.name(), "binary");
+        let r = resolve_integrity_for_protocol(None, Some("mqtt"));
+        assert_eq!(r.name(), "binary");
+        let r = resolve_integrity_for_protocol(None, Some("smb"));
+        assert_eq!(r.name(), "binary");
     }
 
     #[test]

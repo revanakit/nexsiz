@@ -1,8 +1,11 @@
-//! NEXSIZ – Protocol plugins (built-in + grammar-based)
+//! NEXSIZ – Protocol plugins (built-in + grammar-based + JSON models)
 //! Author  : Revana
-//! Date    : 04/08/2026
+//! Date    : 07/08/2026
 
-use crate::input::model::ProtocolModel;
+use crate::input::model::{
+    FieldSpec, MessageSpec, ModelChecksum, ModelEndian, ProtocolModel,
+};
+use crate::common::types::FieldType;
 
 /// Trait for protocol-specific hints used by the mutator and integrity layer.
 pub trait ProtocolPlugin: Send + Sync {
@@ -17,6 +20,11 @@ pub enum BuiltinProtocol {
     Ftp,
     Http,
     Smtp,
+    Dns,
+    Mqtt,
+    Smb,
+    BinaryLp,
+    BinaryLpLe,
 }
 
 impl BuiltinProtocol {
@@ -24,8 +32,13 @@ impl BuiltinProtocol {
         match name.to_lowercase().as_str() {
             "generic" => Some(Self::Generic),
             "ftp" => Some(Self::Ftp),
-            "http" => Some(Self::Http),
+            "http" | "https" => Some(Self::Http),
             "smtp" => Some(Self::Smtp),
+            "dns" => Some(Self::Dns),
+            "mqtt" => Some(Self::Mqtt),
+            "smb" | "cifs" => Some(Self::Smb),
+            "binary-lp" | "lp" | "binary" => Some(Self::BinaryLp),
+            "binary-lp-le" | "lp-le" | "binary-le" => Some(Self::BinaryLpLe),
             _ => None,
         }
     }
@@ -36,6 +49,11 @@ impl BuiltinProtocol {
             Self::Ftp => "ftp",
             Self::Http => "http",
             Self::Smtp => "smtp",
+            Self::Dns => "dns",
+            Self::Mqtt => "mqtt",
+            Self::Smb => "smb",
+            Self::BinaryLp => "binary-lp",
+            Self::BinaryLpLe => "binary-lp-le",
         }
     }
 }
@@ -51,6 +69,11 @@ impl ProtocolPlugin for BuiltinProtocol {
             Self::Ftp => ProtocolModel::ftp(),
             Self::Http => ProtocolModel::http(),
             Self::Smtp => ProtocolModel::smtp(),
+            Self::Dns => ProtocolModel::dns(),
+            Self::Mqtt => ProtocolModel::mqtt(),
+            Self::Smb => ProtocolModel::smb(),
+            Self::BinaryLp => ProtocolModel::binary_lp(),
+            Self::BinaryLpLe => ProtocolModel::binary_lp_le(),
         }
     }
 }
@@ -84,6 +107,8 @@ pub struct GrammarProtocol {
     productions: Vec<GrammarProduction>,
     length_prefixed: bool,
     delimiter: Option<u8>,
+    endian: ModelEndian,
+    length_width: Option<usize>,
 }
 
 impl GrammarProtocol {
@@ -93,6 +118,8 @@ impl GrammarProtocol {
             productions: Vec::new(),
             length_prefixed: false,
             delimiter: None,
+            endian: ModelEndian::Big,
+            length_width: None,
         }
     }
 
@@ -108,6 +135,16 @@ impl GrammarProtocol {
 
     pub fn length_prefixed(mut self, v: bool) -> Self {
         self.length_prefixed = v;
+        self
+    }
+
+    pub fn endian(mut self, e: ModelEndian) -> Self {
+        self.endian = e;
+        self
+    }
+
+    pub fn length_width(mut self, w: usize) -> Self {
+        self.length_width = Some(w);
         self
     }
 
@@ -220,6 +257,68 @@ impl GrammarProtocol {
             ))
     }
 
+    pub fn dns_grammar() -> Self {
+        Self::new("grammar-dns")
+            .length_prefixed(true)
+            .length_width(2)
+            .endian(ModelEndian::Big)
+            .production(GrammarProduction::new(
+                "qtype",
+                vec![b"\x00\x01", b"\x00\x1c", b"\x00\x0f", b"\x00\x10", b"\x00\xff"],
+            ))
+            .production(GrammarProduction::new(
+                "qclass",
+                vec![b"\x00\x01", b"\x00\xff"],
+            ))
+            .production(GrammarProduction::new(
+                "name",
+                vec![
+                    b"\x03www\x07example\x03com\x00",
+                    b"\x00",
+                    b"\xff\xff",
+                ],
+            ))
+    }
+
+    pub fn mqtt_grammar() -> Self {
+        Self::new("grammar-mqtt")
+            .length_prefixed(true)
+            .production(GrammarProduction::new(
+                "pkt_type",
+                vec![b"\x10", b"\x20", b"\x30", b"\x80", b"\x90", b"\xc0", b"\xe0"],
+            ))
+            .production(GrammarProduction::new(
+                "proto",
+                vec![b"MQTT", b"\x04", b"\x05"],
+            ))
+            .production(GrammarProduction::new(
+                "topic",
+                vec![b"test/topic", b"#", b"+", b"$SYS"],
+            ))
+    }
+
+    pub fn smb_grammar() -> Self {
+        Self::new("grammar-smb")
+            .length_prefixed(true)
+            .length_width(4)
+            .endian(ModelEndian::Big)
+            .production(GrammarProduction::new(
+                "magic",
+                vec![b"\xffSMB", b"\xfeSMB"],
+            ))
+            .production(GrammarProduction::new(
+                "command",
+                vec![
+                    b"\x00\x00", b"\x01\x00", b"\x03\x00", b"\x05\x00",
+                    b"\x08\x00", b"\x09\x00", b"\x0b\x00",
+                ],
+            ))
+            .production(GrammarProduction::new(
+                "share",
+                vec![b"IPC$", b"C$", b"ADMIN$", b"\\"],
+            ))
+    }
+
     pub fn generic_grammar() -> Self {
         Self::new("grammar-generic").production(GrammarProduction::new(
             "blob",
@@ -271,19 +370,281 @@ impl ProtocolPlugin for GrammarProtocol {
             dictionary,
             length_prefixed: self.length_prefixed,
             delimiter: self.delimiter,
+            endian: self.endian,
+            checksum: ModelChecksum::Auto,
+            messages: Vec::new(),
+            length_width: self.length_width,
         }
     }
 }
 
+// ── JSON / external model (feature-gated) ─────────────────────────────────────
+
+/// Wrapper that holds a fully-built ProtocolModel loaded from JSON or constructed
+/// programmatically. Used for operator-defined field trees.
+pub struct ExternalProtocol {
+    name: String,
+    model: ProtocolModel,
+}
+
+impl ExternalProtocol {
+    pub fn new(name: impl Into<String>, model: ProtocolModel) -> Self {
+        Self {
+            name: name.into(),
+            model,
+        }
+    }
+}
+
+impl ProtocolPlugin for ExternalProtocol {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn build_model(&self) -> ProtocolModel {
+        self.model.clone()
+    }
+}
+
+/// Load a protocol model from a JSON file.
+///
+/// Requires the `json-model` feature. When the feature is disabled this function
+/// returns an error instructing the operator to rebuild with `--features json-model`.
+///
+/// Expected minimal schema (all fields optional except name):
+/// ```json
+/// {
+///   "name": "myproto",
+///   "length_prefixed": true,
+///   "length_width": 2,
+///   "endian": "be",
+///   "delimiter": null,
+///   "dictionary": ["\\x00", "CMD"],
+///   "messages": [
+///     {
+///       "name": "req",
+///       "fields": [
+///         { "name": "len", "type": "Length", "size": 2 },
+///         { "name": "payload", "type": "Binary" }
+///       ]
+///     }
+///   ]
+/// }
+/// ```
+pub fn load_model_from_path(path: &str) -> Result<Box<dyn ProtocolPlugin>, String> {
+    #[cfg(feature = "json-model")]
+    {
+        load_model_from_path_json(path)
+    }
+    #[cfg(not(feature = "json-model"))]
+    {
+        let _ = path;
+        Err(
+            "JSON protocol models require the `json-model` feature. \
+             Rebuild with: cargo build --release --features json-model"
+                .to_string(),
+        )
+    }
+}
+
+#[cfg(feature = "json-model")]
+fn load_model_from_path_json(path: &str) -> Result<Box<dyn ProtocolPlugin>, String> {
+    use serde::Deserialize;
+    use std::fs;
+
+    #[derive(Debug, Deserialize)]
+    struct JsonField {
+        name: String,
+        #[serde(rename = "type")]
+        ftype: String,
+        size: Option<usize>,
+        protected: Option<bool>,
+        values: Option<Vec<String>>,
+        endian: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct JsonMessage {
+        name: String,
+        fields: Option<Vec<JsonField>>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct JsonModel {
+        name: String,
+        length_prefixed: Option<bool>,
+        length_width: Option<usize>,
+        endian: Option<String>,
+        delimiter: Option<String>,
+        dictionary: Option<Vec<String>>,
+        messages: Option<Vec<JsonMessage>>,
+        checksum: Option<String>,
+    }
+
+    let data = fs::read_to_string(path).map_err(|e| format!("read {}: {}", path, e))?;
+    let j: JsonModel =
+        serde_json::from_str(&data).map_err(|e| format!("parse {}: {}", path, e))?;
+
+    let endian = match j.endian.as_deref().map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("le") | Some("little") => ModelEndian::Little,
+        _ => ModelEndian::Big,
+    };
+
+    let checksum = match j.checksum.as_deref().map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("additive") => ModelChecksum::Additive,
+        Some("xor") => ModelChecksum::Xor,
+        Some("crc16") => ModelChecksum::Crc16,
+        Some("crc32") => ModelChecksum::Crc32,
+        Some("ones") | Some("ones-complement") => ModelChecksum::OnesComplement,
+        _ => ModelChecksum::Auto,
+    };
+
+    let delimiter = j.delimiter.and_then(|s| {
+        if s.is_empty() || s == "null" {
+            None
+        } else if s == "\\n" || s == "\n" {
+            Some(b'\n')
+        } else {
+            s.bytes().next()
+        }
+    });
+
+    let mut dictionary = Vec::new();
+    if let Some(dict) = j.dictionary {
+        for entry in dict {
+            dictionary.push(parse_token(&entry));
+        }
+    }
+
+    let mut messages = Vec::new();
+    if let Some(msgs) = j.messages {
+        for jm in msgs {
+            let mut ms = MessageSpec::new(jm.name);
+            if let Some(fields) = jm.fields {
+                for jf in fields {
+                    let ftype = parse_field_type(&jf.ftype);
+                    let mut fs = FieldSpec::new(jf.name, ftype);
+                    if let Some(sz) = jf.size {
+                        fs = fs.with_size(sz);
+                    }
+                    if jf.protected.unwrap_or(false) {
+                        fs = fs.protected();
+                    }
+                    if let Some(vals) = jf.values {
+                        let parsed: Vec<Vec<u8>> = vals.iter().map(|v| parse_token(v)).collect();
+                        fs = fs.values(parsed);
+                    }
+                    if let Some(ref e) = jf.endian {
+                        let e = match e.to_ascii_lowercase().as_str() {
+                            "le" | "little" => ModelEndian::Little,
+                            _ => ModelEndian::Big,
+                        };
+                        fs = fs.endian(e);
+                    }
+                    ms = ms.field(fs);
+                }
+            }
+            messages.push(ms);
+        }
+    }
+
+    let model = ProtocolModel {
+        name: j.name.clone(),
+        dictionary,
+        length_prefixed: j.length_prefixed.unwrap_or(false),
+        delimiter,
+        endian,
+        checksum,
+        messages,
+        length_width: j.length_width,
+    };
+
+    Ok(Box::new(ExternalProtocol::new(j.name, model)))
+}
+
+#[cfg(feature = "json-model")]
+fn parse_field_type(s: &str) -> FieldType {
+    match s.to_ascii_lowercase().as_str() {
+        "command" | "cmd" => FieldType::Command,
+        "length" | "len" => FieldType::Length,
+        "checksum" | "chk" | "crc" => FieldType::Checksum,
+        "numeric" | "num" | "int" => FieldType::Numeric,
+        "payload" | "pay" => FieldType::Payload,
+        "string" | "str" | "text" => FieldType::String,
+        "binary" | "bin" | "bytes" => FieldType::Binary,
+        other => FieldType::Custom(other.to_string()),
+    }
+}
+
+#[cfg(feature = "json-model")]
+fn parse_token(s: &str) -> Vec<u8> {
+    // Support simple \xNN escapes and raw UTF-8
+    if s.starts_with("\\x") || s.starts_with("\x") {
+        // very small hex parser for common cases
+        let hex = s.trim_start_matches('\\').trim_start_matches('x');
+        if hex.len() == 2 {
+            if let Ok(v) = u8::from_str_radix(hex, 16) {
+                return vec![v];
+            }
+        }
+    }
+    // Multi-byte \xNN\xNN ...
+    if s.contains("\\x") {
+        let mut out = Vec::new();
+        let mut rest = s;
+        while let Some(pos) = rest.find("\\x") {
+            if pos > 0 {
+                out.extend_from_slice(rest[..pos].as_bytes());
+            }
+            rest = &rest[pos + 2..];
+            if rest.len() >= 2 {
+                if let Ok(v) = u8::from_str_radix(&rest[..2], 16) {
+                    out.push(v);
+                    rest = &rest[2..];
+                    continue;
+                }
+            }
+            break;
+        }
+        out.extend_from_slice(rest.as_bytes());
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    s.as_bytes().to_vec()
+}
+
+/// Resolve a protocol plugin by name.
+///
+/// Accepts:
+/// - Built-in names: generic, ftp, http, smtp, dns, mqtt, smb, binary-lp, binary-lp-le
+/// - Grammar aliases: grammar-ftp, g-ftp, grammar-dns, …
+/// - Absolute / relative path ending in `.json` → load via `load_model_from_path`
+/// - Unknown → falls back to generic
 pub fn resolve_protocol(name: Option<&str>) -> Box<dyn ProtocolPlugin> {
     let n = name.map(|s| s.to_lowercase());
     match n.as_deref() {
+        // Grammar variants
         Some("grammar-ftp") | Some("g-ftp") => Box::new(GrammarProtocol::ftp_grammar()),
         Some("grammar-http") | Some("g-http") => Box::new(GrammarProtocol::http_grammar()),
         Some("grammar-smtp") | Some("g-smtp") => Box::new(GrammarProtocol::smtp_grammar()),
+        Some("grammar-dns") | Some("g-dns") => Box::new(GrammarProtocol::dns_grammar()),
+        Some("grammar-mqtt") | Some("g-mqtt") => Box::new(GrammarProtocol::mqtt_grammar()),
+        Some("grammar-smb") | Some("g-smb") => Box::new(GrammarProtocol::smb_grammar()),
         Some("grammar-generic") | Some("g-generic") | Some("grammar") => {
             Box::new(GrammarProtocol::generic_grammar())
         }
+        // Path to JSON model
+        Some(path) if path.ends_with(".json") || path.contains('/') || path.contains('\\') => {
+            match load_model_from_path(path) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("[nexsiz] warning: failed to load model '{}': {}", path, e);
+                    Box::new(BuiltinProtocol::Generic)
+                }
+            }
+        }
+        // Built-ins
         Some(other) => {
             if let Some(b) = BuiltinProtocol::from_name(other) {
                 Box::new(b)
@@ -302,6 +663,9 @@ mod tests {
     #[test]
     fn builtin_names() {
         assert_eq!(BuiltinProtocol::Ftp.name(), "ftp");
+        assert_eq!(BuiltinProtocol::Dns.name(), "dns");
+        assert_eq!(BuiltinProtocol::Mqtt.name(), "mqtt");
+        assert_eq!(BuiltinProtocol::Smb.name(), "smb");
         let m = BuiltinProtocol::Http.build_model();
         assert_eq!(m.name, "http");
     }
@@ -313,6 +677,23 @@ mod tests {
         let m = p.build_model();
         assert!(m.dictionary.iter().any(|t| t == b"USER"));
         assert!(m.dictionary.iter().any(|t| t == b"\r\n"));
+    }
+
+    #[test]
+    fn resolve_new_models() {
+        let p = resolve_protocol(Some("dns"));
+        assert_eq!(p.name(), "dns");
+        let m = p.build_model();
+        assert!(m.length_prefixed);
+
+        let p = resolve_protocol(Some("mqtt"));
+        assert_eq!(p.name(), "mqtt");
+
+        let p = resolve_protocol(Some("smb"));
+        assert_eq!(p.name(), "smb");
+
+        let p = resolve_protocol(Some("binary-lp"));
+        assert_eq!(p.name(), "binary-lp");
     }
 
     #[test]
