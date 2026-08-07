@@ -13,6 +13,9 @@ Nexsiz (discovery)  →  crash / hang / interesting  →  NXS (existence & depth
 | `crash/auto-repro` | `nxs-auto-repro` | safe, default | Crash/hang reproducible |
 | `crash/save-notify` | `nxs-save-notify` | safe, default | — (exit 0) |
 | `crash/differential-probe` | `nxs-differential-probe` | intrusive | Differential anomaly |
+| `crash/state-diff` | `nxs-state-diff` | intrusive | Response signature divergence across shots |
+| `crash/coverage-probe` | `nxs-coverage-probe` | intrusive | Path diversity / mixed behavioural classes |
+| `crash/auth-bypass` | `nxs-auth-bypass` | intrusive | Unauthorized-looking success (FTP/SMTP/HTTP) |
 | `hang/timeout-analyzer` | `nxs-timeout-analyzer` | hang | Hard hang confirmed |
 | `external/notify-webhook` | `nxs-notify-webhook` | external | — (HTTP notify) |
 

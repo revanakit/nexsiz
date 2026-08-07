@@ -39,6 +39,9 @@ OFFICIAL=(
   nxs-differential-probe
   nxs-timeout-analyzer
   nxs-notify-webhook
+  nxs-state-diff
+  nxs-coverage-probe
+  nxs-auth-bypass
 )
 
 # ---------------------------------------------------------------------------
@@ -132,6 +135,15 @@ else
   ok "auto-repro rejects missing inputs"
 fi
 
+# New NXS also reject missing inputs
+for b in nxs-state-diff nxs-coverage-probe nxs-auth-bypass; do
+  if "$BIN/$b" --target 127.0.0.1:9 >/dev/null 2>&1; then
+    fail "$b should reject missing --crash/--meta"
+  else
+    ok "$b rejects missing inputs"
+  fi
+done
+
 # ---------------------------------------------------------------------------
 # 3. Optional live-target probes
 # ---------------------------------------------------------------------------
@@ -174,6 +186,39 @@ else
     ok "timeout-analyzer live exit=$rc"
   else
     fail "timeout-analyzer live unexpected exit=$rc"
+  fi
+
+  set +e
+  "$BIN/nxs-state-diff" --crash "$CRASH_FILE" --target "$T" --out "$TMP/out-state" \
+    --timeout 8 --shots 3 -v >"$TMP/state.stdout" 2>"$TMP/state.stderr"
+  rc=$?
+  set -e
+  if [[ $rc -eq 0 || $rc -eq 1 || $rc -eq 2 || $rc -eq 3 ]]; then
+    ok "state-diff live exit=$rc"
+  else
+    fail "state-diff live unexpected exit=$rc"
+  fi
+
+  set +e
+  "$BIN/nxs-coverage-probe" --crash "$CRASH_FILE" --target "$T" --out "$TMP/out-cov" \
+    --timeout 8 -v >"$TMP/cov.stdout" 2>"$TMP/cov.stderr"
+  rc=$?
+  set -e
+  if [[ $rc -eq 0 || $rc -eq 1 || $rc -eq 2 || $rc -eq 3 ]]; then
+    ok "coverage-probe live exit=$rc"
+  else
+    fail "coverage-probe live unexpected exit=$rc"
+  fi
+
+  set +e
+  "$BIN/nxs-auth-bypass" --crash "$CRASH_FILE" --target "$T" --model ftp \
+    --out "$TMP/out-auth" --timeout 8 -v >"$TMP/auth.stdout" 2>"$TMP/auth.stderr"
+  rc=$?
+  set -e
+  if [[ $rc -eq 0 || $rc -eq 1 || $rc -eq 2 || $rc -eq 3 ]]; then
+    ok "auth-bypass live exit=$rc"
+  else
+    fail "auth-bypass live unexpected exit=$rc"
   fi
 fi
 
