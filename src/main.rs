@@ -1,6 +1,8 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
 //! Date    : 06/08/2026
+//!
 //! Entry point. Parses a minimal CLI (no external clap dependency) and
 //! launches the fuzzing engine (native or LibAFL-powered).
 //! Short aliases prioritised for operational speed and memorability.
