@@ -1,6 +1,9 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 04/08/2026
+//! Date    : 06/08/2026
+//! Files   : nexsiz/src/state/predictor.rs
+//!
 //! Adaptive state transition predictor.
 
 use std::collections::HashMap;
