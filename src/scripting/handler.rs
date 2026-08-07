@@ -1,6 +1,10 @@
-//! RPC command handler – campaign control + all plugin bridges + structured seeds.
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
 //! Date    : 06/08/2026
+//! Files   : nexsiz/src/scripting/handler.rs
+//!
+//! RPC command handler – campaign control + all plugin bridges + structured seeds.
 
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::coverage::CoverageProvider;
