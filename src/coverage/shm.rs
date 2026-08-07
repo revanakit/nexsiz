@@ -1,6 +1,10 @@
-//! NEXSIZ – POSIX shared-memory coverage map (Linux)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/shm.rs
+//!
+//! NEXSIZ – POSIX shared-memory coverage map (Linux)
 //!
 //! Layout (identical to AFL / SharedMapCoverage):
 //!   65536 bytes, each byte = saturating hit count for one edge slot.
