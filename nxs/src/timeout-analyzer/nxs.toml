@@ -1,0 +1,11 @@
+id = "hang/timeout-analyzer"
+name = "timeout-analyzer"
+version = "1.0.0"
+categories = ["hang"]
+events = ["hang"]
+description = "Multi-shot latency measurement of a hang input. Classifies soft timeout vs hard hang. Exit 2 when a hard hang is confirmed."
+language = "rust"
+entry = "bin/nxs-timeout-analyzer"
+
+[args]
+# no script-specific required args
