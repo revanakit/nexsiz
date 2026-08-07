@@ -1,0 +1,23 @@
+{
+  "name": "binary-lp",
+  "length_prefixed": true,
+  "length_width": 2,
+  "endian": "be",
+  "checksum": "crc32",
+  "dictionary": [
+    "\\x00",
+    "\\xff",
+    "\\x00\\x00",
+    "\\xff\\xff"
+  ],
+  "messages": [
+    {
+      "name": "frame",
+      "fields": [
+        { "name": "len", "type": "Length", "size": 2, "endian": "be" },
+        { "name": "payload", "type": "Binary" },
+        { "name": "crc", "type": "Checksum", "size": 4 }
+      ]
+    }
+  ]
+}

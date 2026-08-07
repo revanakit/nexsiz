@@ -1,0 +1,25 @@
+{
+  "name": "custom-example",
+  "length_prefixed": true,
+  "length_width": 4,
+  "endian": "le",
+  "checksum": "crc32",
+  "dictionary": [
+    "\\x01",
+    "\\x02",
+    "PING",
+    "PONG",
+    "\\x00\\x00\\x00\\x00"
+  ],
+  "messages": [
+    {
+      "name": "request",
+      "fields": [
+        { "name": "len", "type": "Length", "size": 4, "endian": "le" },
+        { "name": "opcode", "type": "Command", "size": 1, "values": ["\\x01", "\\x02"] },
+        { "name": "payload", "type": "Binary" },
+        { "name": "crc", "type": "Checksum", "size": 4 }
+      ]
+    }
+  ]
+}
