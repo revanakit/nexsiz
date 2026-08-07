@@ -1,6 +1,10 @@
-//! NEXSIZ – Null coverage provider (pure black-box)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/null.rs
+//!
+//! NEXSIZ – Null coverage provider (pure black-box)
 
 use crate::common::types::ExecutionResult;
 use crate::coverage::provider::{CoverageFeedback, CoverageProvider};
