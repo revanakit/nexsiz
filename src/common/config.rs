@@ -52,6 +52,8 @@ pub struct MutatorConfig {
     pub dict_prob: f64,
     pub max_mutations: usize,
     pub repair_integrity: bool,
+    /// Probability of splicing a MessageSpec / SequenceSpec template (0.0–1.0).
+    pub template_prob: f64,
 }
 
 impl Default for MutatorConfig {
@@ -62,6 +64,7 @@ impl Default for MutatorConfig {
             dict_prob: 0.25,
             max_mutations: 8,
             repair_integrity: true,
+            template_prob: 0.12,
         }
     }
 }
@@ -118,19 +121,12 @@ pub struct PluginConfig {
 /// NXS (existence-script) configuration. Disabled by default → zero overhead.
 #[derive(Debug, Clone)]
 pub struct NxsConfig {
-    /// Master enable (set true when --nxs is supplied).
     pub enabled: bool,
-    /// Set expression: "default", "crash", "crash/auto-repro", "default,hang", …
     pub set: String,
-    /// Extra colon-separated search directories (prepended to the standard path).
     pub path: Option<String>,
-    /// Events that trigger spawn: crash, hang, interesting, new_coverage, new_state.
     pub events: Vec<String>,
-    /// Minimum seconds between identical (event, crash_id, nxs_id) spawns.
     pub cooldown_secs: u64,
-    /// Max NXS spawns per event type this campaign (0 = unlimited).
     pub max_per_event: u64,
-    /// Max total NXS spawns this campaign (0 = unlimited).
     pub max_total: u64,
 }
 
@@ -166,12 +162,8 @@ pub struct Config {
     pub use_libafl: bool,
     pub coverage: Option<String>,
     pub enc_key: Option<String>,
-    /// POSIX SHM id for coverage map (`/nexsiz-cov-<id>`). Also NEXSIZ_SHM_ID.
     pub coverage_shm: Option<String>,
-    /// Unix domain socket path for the Python/RPC campaign control surface.
-    /// Also NEXSIZ_RPC_SOCK / -Y --rpc.
     pub rpc_sock: Option<String>,
-    /// NXS existence-script integration (Phase 2+).
     pub nxs: NxsConfig,
 }
 
@@ -235,7 +227,7 @@ impl Config {
                 }
                 "protocol" => cfg.target.protocol = val.to_lowercase(),
                 "model" | "protocol_model" => {
-                    let v = val.to_lowercase();
+                    let v = val.to_string();
                     cfg.protocol_model = Some(v.clone());
                     cfg.plugins.protocol = Some(v);
                 }
@@ -297,6 +289,23 @@ impl Config {
                 }
                 "use_libafl" | "libafl" => {
                     cfg.use_libafl = val == "true" || val == "1";
+                }
+                // Mutator knobs
+                "template_prob" => {
+                    let p: f64 = val.parse().unwrap_or(0.12);
+                    cfg.mutator.template_prob = p.clamp(0.0, 1.0);
+                }
+                "hierarchical_prob" => {
+                    cfg.mutator.hierarchical_prob = val.parse().unwrap_or(0.15);
+                }
+                "field_prob" => {
+                    cfg.mutator.field_prob = val.parse().unwrap_or(0.70);
+                }
+                "dict_prob" => {
+                    cfg.mutator.dict_prob = val.parse().unwrap_or(0.25);
+                }
+                "max_mutations" => {
+                    cfg.mutator.max_mutations = val.parse().unwrap_or(8);
                 }
                 // NXS
                 "nxs" | "nxs_set" => {
