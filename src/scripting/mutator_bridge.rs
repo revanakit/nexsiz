@@ -1,7 +1,11 @@
-//! Python Mutator hooks bridge (push extras – zero hot-path RPC)
-//! Author  : Revana
-//! Date    : 06/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
+//! Author  : Revana
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/scripting/mutator_bridge.rs
+//!
+//! Python Mutator hooks bridge (push extras – zero hot-path RPC)
+//! 
 //! Push model only: extra dictionary tokens are merged into each worker's
 //! mutator. No reverse-RPC on the mutation hot path (avoids throughput
 //! collapse and keeps integrity ownership unambiguous).
