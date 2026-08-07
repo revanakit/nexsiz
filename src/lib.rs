@@ -1,11 +1,15 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
 //! Date    : 06/08/2026
+//! Files   : nexsiz/src/lib.rs
+//!
 //! Architecture follows the four-layer design:
 //!   1. Input Construction Layer   - semantic token sequences + hierarchical mutators
 //!   2. State Awareness & Feedback - hybrid black/grey-box state model + adaptive prediction
 //!   3. Execution & Efficiency     - intelligent connection reuse + parallel workers
 //!   4. Monitoring, Oracle & Analysis - crash/hang detection, minimization, structured logging
+//!
 //! Plus a trait-based plugin layer for Protocol / Integrity / Oracle / Encryptor
 //! and a CoverageProvider layer for true grey-box instrumentation hooks.
 //! Plus an out-of-process RPC campaign control surface for Python scripting.
