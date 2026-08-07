@@ -1,6 +1,10 @@
-//! RPC protocol constants and helpers.
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 06/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/scripting/protocol.rs
+//!
+//! RPC protocol constants and helpers.
 
 pub const PROTOCOL_VERSION: u32 = 1;
 
