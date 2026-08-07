@@ -1,0 +1,11 @@
+id = "crash/differential-probe"
+name = "differential-probe"
+version = "1.0.0"
+categories = ["crash", "intrusive"]
+events = ["crash"]
+description = "Replay the crash baseline then a small set of controlled variants (truncate, null-pad, length-flip). Exit 2 when a variant produces a new anomaly relative to baseline. Intrusive — contacts the live target multiple times."
+language = "rust"
+entry = "bin/nxs-differential-probe"
+
+[args]
+# no script-specific required args
