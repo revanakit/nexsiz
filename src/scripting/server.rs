@@ -1,6 +1,10 @@
-//! Unix domain socket RPC server (+ oracle-mode reverse-RPC loop).
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/scripting/server.rs
+//!
+//! Unix domain socket RPC server (+ oracle-mode reverse-RPC loop).
 
 use crate::scripting::handler::{HandleOutcome, RpcContext};
 use crate::scripting::json::{self, JsonValue};
