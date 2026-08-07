@@ -1,6 +1,10 @@
-//! NEXSIZ – Coverage provider registry
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/registry.rs
+//!
+//! NEXSIZ – Coverage provider registry
 
 use crate::coverage::map::SharedMapCoverage;
 use crate::coverage::null::NullCoverage;
