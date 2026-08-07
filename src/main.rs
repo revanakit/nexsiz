@@ -2,6 +2,7 @@
 //!
 //! Author  : Revana
 //! Date    : 06/08/2026
+//! Files   : nexsiz/src/main.rs
 //!
 //! Entry point. Parses a minimal CLI (no external clap dependency) and
 //! launches the fuzzing engine (native or LibAFL-powered).
