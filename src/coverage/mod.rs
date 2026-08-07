@@ -1,6 +1,10 @@
-//! NEXSIZ – Grey-box Coverage / Instrumentation layer
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/mod.rs
+//!
+//! NEXSIZ – Grey-box Coverage / Instrumentation layer
 //!
 //! Trait-based coverage provider system that turns Nexsiz from pure
 //! black-box into a true hybrid grey-box fuzzer.
