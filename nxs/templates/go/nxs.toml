@@ -1,0 +1,8 @@
+id = "custom/go-template"
+name = "go-template"
+version = "0.1.0"
+categories = ["custom"]
+events = ["crash", "hang", "interesting"]
+description = "Skeleton custom NXS written in Go."
+language = "go"
+entry = "bin/nxs-go-template"
