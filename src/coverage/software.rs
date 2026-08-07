@@ -1,6 +1,10 @@
-//! NEXSIZ – Software / response-edge coverage provider
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/software.rs
+//!
+//! NEXSIZ – Software / response-edge coverage provider
 //!
 //! Lightweight hybrid provider that turns protocol responses into a
 //! compact edge set without any binary instrumentation.
