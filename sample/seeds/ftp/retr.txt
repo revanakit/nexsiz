@@ -1,0 +1,5 @@
+USER ftp
+PASS ftp
+CWD /
+RETR testfile
+QUIT

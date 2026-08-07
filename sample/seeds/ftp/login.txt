@@ -1,0 +1,8 @@
+USER anonymous
+PASS guest
+SYST
+PWD
+TYPE I
+PASV
+LIST
+QUIT
