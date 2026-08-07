@@ -1,6 +1,10 @@
-//! Python Protocol plugin bridge
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/scripting/protocol_bridge.rs
+//!
+//! Python Protocol plugin bridge
 //!
 //! Python pushes a ProtocolModel definition (dictionary, delimiter,
 //! length-prefix flag, optional grammar productions). The engine uses that
