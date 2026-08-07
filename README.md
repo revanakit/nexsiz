@@ -32,6 +32,7 @@ Design priorities are explicit: precision over volume, structural integrity afte
 | Differential & sanitizer oracles | Multi-dimensional behavioural divergence and memory-safety / protocol-anomaly detection |
 | NXS existence scripts | Post-event executable actors with rate-limited, non-blocking spawn and asynchronous exit observation |
 | Operator-defined field trees | JSON protocol models (feature `json-model`) — define length/checksum/command layout without recompile |
+| Offline grammar inference | `--infer-model` extracts delimiter, length-prefix, and tokens from seed corpora |
 
 ---
 
@@ -86,9 +87,19 @@ Example schema (`models/custom-example.json`):
 
 Integrity auto-selects `binary` / `binary-le` for `dns`, `mqtt`, `smb`, and `binary-lp*` models.
 
-### Simple Grammar Inference
+### Offline Grammar Inference
 
-`infer_model_from_bytes` (pure stdlib) extracts delimiters, length-prefix patterns, and printable tokens from seed + response samples. Useful as a starting point before writing a formal JSON model.
+```bash
+# Inspect seeds and print summary
+./target/release/nexsiz --infer-model -s seeds/ftp -v
+
+# Write inferred model (JSON when built with --features json-model)
+./target/release/nexsiz --infer-model -s seeds/custom --infer-out models/inferred.json
+```
+
+Heuristics detect CRLF/LF delimiters, 2/4-byte length-prefix patterns, and printable tokens (≥3 chars). Output is a starting point — refine into a formal JSON model for production campaigns.
+
+Field-aware mutation respects `FieldSpec.size` (pad/truncate), prefers `FieldSpec.values`, and avoids destructive edits on protected / Length / Checksum fields.
 
 ---
 
@@ -145,6 +156,7 @@ Contract, search-path resolution, and rate-limit controls are documented in [`nx
 │  protocol-aware integrity repair pipeline                        │
 │  optional LibAFL Mutator adapter                                 │
 │  JSON field trees (feature json-model)                           │
+│  offline grammar inference (--infer-model)                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -178,6 +190,10 @@ echo -e "USER anonymous\r\nPASS guest\r\nPWD\r\nQUIT\r\n" > seeds/ftp/login.txt
 ./target/release/nexsiz -h 10.0.0.5 -p 53  -m dns  -P tcp -v
 ./target/release/nexsiz -h 10.0.0.5 -p 1883 -m mqtt -v
 ./target/release/nexsiz -h 10.0.0.5 -p 445  -m smb  -v
+
+# Infer model from seeds
+./target/release/nexsiz --infer-model -s seeds/ftp -v
+./target/release/nexsiz --infer-model -s seeds/custom --infer-out models/inferred.json
 
 # Campaign with NXS deepening
 cd nxs && ./build.sh && cd ..
@@ -223,6 +239,13 @@ nexsiz [OPTIONS]
 | `sanitizer` / `san` | ASan/UBSan patterns, length anomaly, null-byte, protocol violation |
 | `diffsan` | differential + sanitizer + coverage (recommended for deep campaigns) |
 | `expanded` | diffsan + error oracle (maximum sensitivity) |
+
+### Model Inference
+
+| Flag | Description |
+|------|-------------|
+| `--infer-model` | Infer protocol model from `-s` seed directory and exit |
+| `--infer-out <PATH>` | Write inferred model (JSON with `json-model` feature, else human dump) |
 
 ### Coverage
 
@@ -298,6 +321,8 @@ nexsiz -h 127.0.0.1 -p 21 -m ftp -C map --shm demo -Y /tmp/nexsiz.sock -v
 nexsiz -h 10.0.0.5 -p 53 -m dns -P tcp -v
 nexsiz -h 10.0.0.5 -p 1883 -m mqtt -v
 nexsiz -h 10.0.0.5 -p 445 -m smb -v
+nexsiz --infer-model -s seeds/ftp -v
+nexsiz --infer-model -s seeds/custom --infer-out models/inferred.json
 nexsiz -h 10.0.0.5 -p 1234 -m models/custom-example.json -v   # needs --features json-model
 ```
 
