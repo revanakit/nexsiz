@@ -1,65 +1,61 @@
-# Protocol Phase 3 — Directed MessageSpec Scheduling
+# Protocol Expansion Track — Complete
 
 **Branch:** `feature/protocol-phase3`  
-**Status:** Implemented  
 **Date:** 2026-08-07
 
-## Goals
+## Scope closed
 
-1. **Directed field selection** — mutation energy concentrates on semantically interesting fields (Command, String, Payload) rather than Length/Checksum.
-2. **Template synthesis** — when `ProtocolModel.messages` is non-empty, the mutator can materialise concrete `Message` instances from `MessageSpec` and splice them into the test case.
-3. **Zero behaviour change** for models without field trees (`generic`, classic text FTP seeds, etc.).
+| Feature | Status |
+|---------|--------|
+| Phase 1 built-ins + JSON models | merged to main |
+| Phase 2 `--infer-model` + field-aware mutation | merged to main |
+| Phase 3 directed scheduling + templates | this branch |
+| Field energy feedback | done |
+| `template_prob=` config | done |
+| Sequence templates | done |
 
-## Field weight table
+## Field energy feedback
 
-| FieldType   | Weight | Notes |
-|-------------|--------|-------|
-| Command     | 10     | Primary target |
-| String      | 9      | |
-| Payload     | 8      | |
-| Binary      | 6      | |
-| Numeric     | 5      | |
-| Custom      | 4      | |
-| Length      | 1      | Rare; integrity repair owns correctness |
-| Checksum    | 0      | Never scheduled for destructive mutation |
+- Each `mutate()` records touched field names in `last_touched`.
+- Worker calls `mutator.on_interesting()` when `ExecutionResult::is_interesting()`.
+- Energy (capped at 64) multiplies base field-type weight: `w * (1 + energy)`.
+- Biases future mutations toward fields that historically produced coverage / crashes / new states.
 
-Protected and empty fields are always skipped.
-
-## Template path
+## Config
 
 ```
-mutate()
-  └─ if model.messages non-empty && rng < template_prob (default 0.12)
-       └─ splice_template()
-            ├─ synthesise_from_spec(MessageSpec)
-            │    └─ materialise_field(FieldSpec)  // values → size → dictionary → random
-            └─ replace | insert | append into TestCase.messages
+template_prob=0.12
+hierarchical_prob=0.15
+field_prob=0.70
+dict_prob=0.25
+max_mutations=8
 ```
 
-`Mutator::with_template_prob(p)` / `set_template_prob(p)` for operator tuning.
+## Sequence templates
 
-## API additions
+```rust
+SequenceSpec { name: "login", steps: ["user", "pass"] }
+```
 
-- `Mutator::synthesise_from_spec(&MessageSpec) -> Message`
-- `Mutator::with_template_prob(f64) -> Self`
-- `Mutator::set_template_prob(f64)`
+Built-in examples:
 
-## Tests
+| Model | Sequences |
+|-------|-----------|
+| `ftp` | `login` (user→pass), `session` (user→pass→pwd→quit) |
+| `mqtt` | `connect-publish` |
 
-- `synthesise_from_dns_spec` — DNS query template materialises with correct field sizes
-- `template_splice_adds_message` — empty parent + template_prob=1 yields ≥1 message
-- `weighted_prefers_command_over_checksum` — Checksum never selected
+API: `Mutator::synthesise_sequence("login") -> Vec<Message>`.
 
-## Operational impact
+`splice_template` prefers sequences (~55%) when present, else single MessageSpec.
 
-| Scenario | Effect |
-|----------|--------|
-| `-m ftp` / text seeds, no MessageSpec | Identical to Phase 2 |
-| `-m dns` / `mqtt` / `smb` / JSON models | Directed scheduling + occasional template splice |
-| Thin corpus | Templates seed structural diversity without hand-written seeds |
+## Operational notes
 
-## Next (optional)
+- Models without `messages` / `sequences` → behaviour unchanged from Phase 2.
+- Integrity repair remains single-owner in the worker.
+- Energy is **per-worker** (local HashMap); not shared across workers by design (simple, lock-free).
 
-- Energy feedback: boost field weights that historically produced new coverage / states
-- Config key `template_prob=` for campaign files
-- Multi-message sequence templates (login → command → logout)
+## Suggested next tracks (outside this feature)
+
+1. Snapshot / desocketing
+2. Shared corpus orchestration
+3. Cross-worker energy aggregation (optional)
