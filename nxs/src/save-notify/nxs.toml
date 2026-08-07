@@ -1,0 +1,11 @@
+id = "crash/save-notify"
+name = "save-notify"
+version = "1.0.0"
+categories = ["crash", "safe", "default"]
+events = ["crash", "hang"]
+description = "Copy crash (± minimised) into a stable archive under --out and optionally invoke NXS_NOTIFY_CMD. Safe, side-effect free beyond local filesystem and the optional hook."
+language = "rust"
+entry = "bin/nxs-save-notify"
+
+[args]
+# no script-specific required args
