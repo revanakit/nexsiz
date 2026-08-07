@@ -1,6 +1,10 @@
-//! Parse structured seed JSON into TestCase
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 06/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/scripting/seed_parse.rs
+//!
+//! Parse structured seed JSON into TestCase
 
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::scripting::json::JsonValue;
