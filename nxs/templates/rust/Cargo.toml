@@ -1,1 +1,14 @@
+[package]
+name = "nxs-template"
+version = "0.1.0"
+edition = "2021"
+description = "NXS custom template (Rust)"
 
+[[bin]]
+name = "nxs-template"
+path = "src/main.rs"
+
+[dependencies]
+# Prefer the shared official lib when available:
+# nxs-lib = { path = "../../src/lib" }
+# Otherwise implement the contract yourself (stdlib only is fine).

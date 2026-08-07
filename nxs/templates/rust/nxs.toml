@@ -1,0 +1,11 @@
+id = "custom/template"
+name = "template"
+version = "0.1.0"
+categories = ["custom"]
+events = ["crash", "hang", "interesting"]
+description = "Skeleton custom NXS. Replace with real logic."
+language = "rust"
+entry = "bin/nxs-template"
+
+[args]
+# script-specific defaults
