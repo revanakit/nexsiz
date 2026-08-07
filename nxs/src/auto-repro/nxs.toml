@@ -1,0 +1,11 @@
+id = "crash/auto-repro"
+name = "auto-repro"
+version = "1.0.0"
+categories = ["crash", "safe", "default"]
+events = ["crash", "hang"]
+description = "Replay the crash (prefer minimised) against the live target. Exit 2 when the crash is behaviourally confirmed."
+language = "rust"
+entry = "bin/nxs-auto-repro"
+
+[args]
+# no script-specific required args beyond the global contract
