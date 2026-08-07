@@ -1,0 +1,13 @@
+# NXS category definitions and default sets
+# Used by Nexsiz --nxs expression resolver and --nxs-list
+
+[categories]
+default   = ["crash/auto-repro", "crash/save-notify"]
+crash     = ["crash/auto-repro", "crash/differential-probe", "crash/save-notify"]
+hang      = ["hang/timeout-analyzer"]
+safe      = ["crash/auto-repro", "crash/save-notify"]
+intrusive = ["crash/differential-probe"]
+external  = ["external/notify-webhook"]
+
+[defaults]
+enabled = ["default"]
