@@ -1,6 +1,8 @@
-//! NEXSIZ – Shared / in-process / SHM coverage map (AFL-style)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/map.rs
 //!
 //! 64 KiB edge map with hit-count buckets.
 //!
