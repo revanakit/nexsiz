@@ -1,6 +1,10 @@
-//! NEXSIZ – CoverageProvider trait
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/coverage/provider.rs
+//!
+//! NEXSIZ – CoverageProvider trait
 
 use crate::common::types::ExecutionResult;
 
