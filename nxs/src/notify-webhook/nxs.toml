@@ -1,0 +1,11 @@
+id = "external/notify-webhook"
+name = "notify-webhook"
+version = "1.0.0"
+categories = ["external"]
+events = ["crash", "hang", "interesting"]
+description = "POST a compact JSON payload (event, target, crash_id, summary) to NXS_WEBHOOK_URL or --url. Does not contact the fuzz target. Exit 0 on HTTP 2xx; exit 1 on transport/config error."
+language = "rust"
+entry = "bin/nxs-notify-webhook"
+
+[args]
+# --url overrides NXS_WEBHOOK_URL
