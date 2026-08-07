@@ -9,7 +9,7 @@
 
 **Stateful Network Protocol Fuzzer**
 
-Nexsiz is a high-performance, modular, pure-Rust network protocol fuzzer engineered for red-team and APT-grade operations. It is purpose-built to explore deep regions of protocol state machines—areas where conventional fuzzers lose structural validity or state context and consequently remain blind.
+**Nexsiz** is a high-performance, modular, pure Rust-based network protocol fuzzer designed for deep network protocol testing. It is purpose-built to explore the deepest regions of a protocol's state machine—areas where conventional fuzzers miss structural validity or state context and consequently remain blind.
 
 Design priorities are explicit: precision over volume, structural integrity after mutation, hybrid black/grey-box feedback, and operational resilience under realistic network conditions.
 
