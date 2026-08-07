@@ -1,0 +1,8 @@
+id = "custom/c-template"
+name = "c-template"
+version = "0.1.0"
+categories = ["custom"]
+events = ["crash", "hang", "interesting"]
+description = "Skeleton custom NXS written in C."
+language = "c"
+entry = "bin/nxs-c-template"
