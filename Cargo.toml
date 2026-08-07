@@ -20,6 +20,8 @@ path = "src/lib.rs"
 [features]
 default = []
 libafl = ["dep:libafl", "dep:libafl_bolts", "dep:serde"]
+# Operator-defined protocol models via JSON (field trees without recompile)
+json-model = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 libc = "0.2"
@@ -27,6 +29,7 @@ libc = "0.2"
 libafl = { version = "0.15.4", optional = true, default-features = false, features = ["std"] }
 libafl_bolts = { version = "0.15.4", optional = true, default-features = false, features = ["std"] }
 serde = { version = "1", optional = true, features = ["derive"] }
+serde_json = { version = "1", optional = true }
 
 [profile.release]
 lto = true
