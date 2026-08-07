@@ -1,1 +1,39 @@
+#!/usr/bin/env python3
+"""NXS Python template — honour nxs/CONTRACT.md"""
 
+import argparse
+import json
+import sys
+from pathlib import Path
+
+def main():
+    p = argparse.ArgumentParser(description="nxs-python-template")
+    p.add_argument("--crash")
+    p.add_argument("--target")
+    p.add_argument("--event", default="crash")
+    p.add_argument("--model")
+    p.add_argument("--minimized")
+    p.add_argument("--meta")
+    p.add_argument("--out")
+    p.add_argument("--timeout", type=float)
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--version", action="store_true")
+    args = p.parse_args()
+
+    if args.version:
+        print("nxs-python-template 0.1.0 (id=custom/python-template)")
+        sys.exit(0)
+
+    if not args.crash and not args.meta:
+        print("error: at least one of --crash or --meta required", file=sys.stderr)
+        sys.exit(1)
+
+    if args.verbose:
+        print(f"[nxs] event={args.event} target={args.target} crash={args.crash}", file=sys.stderr)
+
+    # TODO: real logic
+    print("[nxs-python-template] skeleton — replace with real logic", file=sys.stderr)
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()

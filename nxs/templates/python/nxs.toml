@@ -1,0 +1,8 @@
+id = "custom/python-template"
+name = "python-template"
+version = "0.1.0"
+categories = ["custom"]
+events = ["crash", "hang", "interesting"]
+description = "Skeleton custom NXS written in Python."
+language = "python"
+entry = "run"
