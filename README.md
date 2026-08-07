@@ -43,13 +43,16 @@ Once the engine surfaces a crash, hang, or other interesting event, optional **N
 | `crash/auto-repro` | Deterministic replay (prefers minimised input) |
 | `crash/save-notify` | Artefact archival + optional external notification command |
 | `crash/differential-probe` | Bounded variant probes against a known-good baseline |
+| `crash/state-diff` | Multi-shot response signature comparison (class, hash, length, timing, status codes) |
+| `crash/coverage-probe` | Path-diversity behavioural probe (fingerprints as coverage proxy) |
+| `crash/auth-bypass` | Protocol-aware auth sequence injection (FTP / SMTP / HTTP heuristics) |
 | `hang/timeout-analyzer` | Multi-shot classification of hard hangs |
 | `external/notify-webhook` | Compact HTTP POST of event metadata |
 
 ```bash
 cd nxs && ./build.sh
 nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs default -v
-nexsiz --nxs default --nxs-list
+nexsiz --nxs intrusive --nxs-list
 cd nxs && ./tests/e2e.sh
 ```
 
@@ -109,6 +112,9 @@ echo -e "USER anonymous\r\nPASS guest\r\nPWD\r\nQUIT\r\n" > seeds/ftp/login.txt
 # Campaign with NXS deepening
 cd nxs && ./build.sh && cd ..
 ./target/release/nexsiz -h 127.0.0.1 -p 21 -m ftp --nxs default -v
+
+# Deep campaign (intrusive NXS set)
+./target/release/nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs intrusive --nxs-cooldown 60 -v
 ```
 
 ---
