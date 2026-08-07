@@ -1,6 +1,10 @@
-//! Python Oracle bridge – reverse-RPC for is_interesting()
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/scripting/oracle_bridge.rs
+//!
+//! Python Oracle bridge – reverse-RPC for is_interesting()
 //!
 //! When a Python client calls `register_oracle`, its connection enters
 //! oracle mode. The engine's BridgedOracle serialises each ExecutionResult,
