@@ -1,0 +1,9 @@
+EHLO nexsiz.local
+MAIL FROM:<test@example.com>
+RCPT TO:<victim@example.com>
+DATA
+Subject: test
+
+body
+.
+QUIT
