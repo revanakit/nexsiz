@@ -1,6 +1,9 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 04/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/common/error.rs
+//!
 //! Centralized error handling for Nexsiz.
 //! All public APIs return `Result<T>` using this error type.
 
