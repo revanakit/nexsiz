@@ -1,6 +1,9 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 04/08/2026
+//! Date    : 07/08/2026
+//! Files   : nexsiz/src/common/utils.rs
+//!
 //! Utility functions: RNG, hashing, time helpers, byte manipulation.
 
 use std::collections::hash_map::DefaultHasher;
