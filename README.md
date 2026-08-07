@@ -237,27 +237,22 @@ output/
 
 ---
 
-## Status
-
-All core subsystems are implemented and production-ready:
-
-- Trait-based plugin architecture (Protocol / Integrity / Oracle / Encryptor)
-- LibAFL executor, hierarchical mutator adapter, and LLMP multi-core path
-- True grey-box instrumentation (`CoverageProvider` + shared-memory map + Frida agent)
-- Protocol-aware integrity repair for HTTP, FTP, SMTP, and binary formats
-- Production-grade encryption-layer plugins
-- Differential and sanitizer oracles
-- Out-of-process campaign control surface (Python RPC)
-- NXS Phases 0–5 (contract, shared library, official binaries, core integration, rate limits, e2e harness, webhook)
-
----
-
 ## License
 
 Apache License 2.0. Intended for operational use by offensive security teams.
 
 ---
 
-*Nexsiz — precision over noise · depth over breadth · silence until the edge is found.*
+## Author
 
-Revana Clarestya
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/revanakit">
+        <img src="https://github.com/revanakit.png" width="100px;" alt="Reva Clarestya"/><br />
+        <sub><b>Reva Clarestya</b></sub>
+      </a><br />
+      🚀 Developer & Creator of Nexsiz
+    </td>
+  </tr>
+</table>
