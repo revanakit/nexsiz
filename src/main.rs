@@ -11,9 +11,12 @@
 use nexsiz::common::config::Config;
 use nexsiz::common::error::{NexsizError, Result};
 use nexsiz::execution::engine::Engine;
+use nexsiz::input::model::{infer_model_from_bytes, ProtocolModel};
 use nexsiz::{BANNER, VERSION};
 use std::env;
+use std::fs;
 use std::net::IpAddr;
+use std::path::Path;
 use std::process;
 use std::str::FromStr;
 use std::time::Duration;
@@ -29,10 +32,12 @@ OPTIONS (short · long):
     -h, --host <ADDR>         Target host                 (default: 127.0.0.1)
     -p, --port <PORT>         Target port                 (default: 80)
     -P, --proto <PROTO>       Protocol: tcp | udp         (default: tcp)
-    -m, --model <NAME>        Protocol model: ftp|smtp|http|generic
+    -m, --model <NAME>        Protocol model: ftp|smtp|http|generic|
+                              dns|mqtt|smb|binary-lp|binary-lp-le|
+                              path/to/model.json
     -O, --oracle <NAME>       Oracle: default|strict|crash|hang|coverage|
                               differential|sanitizer|diffsan|expanded
-    -i, --int <NAME>          Integrity: default|http|ftp|smtp|binary|null
+    -i, --int <NAME>          Integrity: default|http|ftp|smtp|binary|binary-le|null
     -e, --enc <NAME>          Encryptor: null|xor|chacha20|tls-record|chacha20+tls|xor+tls
     -k, --key <KEY>           Encryptor key (hex 0x.. or raw string)
     -C, --cov <NAME>          Coverage: null|map|software (default: null)
@@ -52,6 +57,11 @@ OPTIONS (short · long):
     -v, --verbose             Verbose logging
     -?, --help                Show this help
     -V, --version             Show version
+
+MODEL INFERENCE (offline):
+    --infer-model             Infer protocol model from -s seed directory and exit
+    --infer-out <PATH>        Write inferred model (JSON if --features json-model,
+                              otherwise human-readable summary) to PATH
 
 NXS (existence scripts — post-crash/hang deepening):
     --nxs <EXPR>              Enable NXS; EXPR = default|crash|hang|safe|intrusive|
@@ -78,9 +88,12 @@ RPC / PYTHON CONTROL:
 
 EXAMPLES:
     nexsiz -h 127.0.0.1 -p 21 -m ftp -s seeds/ftp -o out/ftp -v
+    nexsiz -h 10.0.0.5 -p 53 -m dns -P tcp -v
+    nexsiz -h 10.0.0.5 -p 1883 -m mqtt -v
+    nexsiz --infer-model -s seeds/ftp -v
+    nexsiz --infer-model -s seeds/custom --infer-out models/inferred.json
     nexsiz -h 127.0.0.1 -p 21 -m ftp --nxs default -v
     nexsiz --nxs default --nxs-list
-    nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs intrusive --nxs-cooldown 60 -v
 
 Key: NEXSIZ_ENC_KEY / NEXSIZ_ENC_NONCE
 SHM: NEXSIZ_SHM_ID
@@ -94,12 +107,16 @@ NXS: NEXSIZ_NXS / NEXSIZ_NXS_PATH
 struct Parsed {
     cfg: Config,
     nxs_list: bool,
+    infer_model: bool,
+    infer_out: Option<String>,
 }
 
 fn parse_args() -> Result<Parsed> {
     let args: Vec<String> = env::args().collect();
     let mut cfg = Config::default();
     let mut nxs_list = false;
+    let mut infer_model = false;
+    let mut infer_out: Option<String> = None;
     let mut i = 1;
 
     while i < args.len() {
@@ -144,9 +161,16 @@ fn parse_args() -> Result<Parsed> {
                 if i >= args.len() {
                     return Err(NexsizError::Config("missing value for -m/--model".into()));
                 }
-                let v = args[i].to_lowercase();
-                cfg.protocol_model = Some(v.clone());
-                cfg.plugins.protocol = Some(v);
+                // Keep original case for paths; lowercase only pure names
+                let v = args[i].clone();
+                let lower = v.to_lowercase();
+                if lower.ends_with(".json") || v.contains('/') || v.contains('\\') {
+                    cfg.protocol_model = Some(v.clone());
+                    cfg.plugins.protocol = Some(v);
+                } else {
+                    cfg.protocol_model = Some(lower.clone());
+                    cfg.plugins.protocol = Some(lower);
+                }
             }
             "-O" | "--oracle" => {
                 i += 1;
@@ -283,6 +307,18 @@ fn parse_args() -> Result<Parsed> {
                 cfg.verbose = true;
             }
 
+            // Model inference
+            "--infer-model" => {
+                infer_model = true;
+            }
+            "--infer-out" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(NexsizError::Config("missing value for --infer-out".into()));
+                }
+                infer_out = Some(args[i].clone());
+            }
+
             // NXS
             "--nxs" => {
                 i += 1;
@@ -330,7 +366,6 @@ fn parse_args() -> Result<Parsed> {
             }
             "--nxs-list" => {
                 nxs_list = true;
-                // Ensure a set is active for listing even if --nxs omitted
                 if !cfg.nxs.enabled {
                     cfg.nxs.enabled = true;
                 }
@@ -370,7 +405,165 @@ fn parse_args() -> Result<Parsed> {
         }
     }
 
-    Ok(Parsed { cfg, nxs_list })
+    Ok(Parsed {
+        cfg,
+        nxs_list,
+        infer_model,
+        infer_out,
+    })
+}
+
+/// Offline model inference: read all files under seed_dir, run heuristics,
+/// print summary, optionally write output.
+fn run_infer_model(seed_dir: &str, out_path: Option<&str>, verbose: bool) -> Result<()> {
+    let dir = Path::new(seed_dir);
+    if !dir.is_dir() {
+        return Err(NexsizError::Config(format!(
+            "seed directory does not exist: {}",
+            seed_dir
+        )));
+    }
+
+    let mut blobs: Vec<Vec<u8>> = Vec::new();
+    for entry in fs::read_dir(dir).map_err(NexsizError::Io)? {
+        let entry = entry.map_err(NexsizError::Io)?;
+        let path = entry.path();
+        if path.is_file() {
+            if let Ok(data) = fs::read(&path) {
+                if !data.is_empty() {
+                    blobs.push(data);
+                }
+            }
+        }
+    }
+
+    if blobs.is_empty() {
+        return Err(NexsizError::Config(format!(
+            "no non-empty seed files in {}",
+            seed_dir
+        )));
+    }
+
+    let refs: Vec<&[u8]> = blobs.iter().map(|b| b.as_slice()).collect();
+    let name = dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("inferred");
+    let model = infer_model_from_bytes(name, &refs, &[]);
+
+    // Human summary always to stdout
+    println!("=== Nexsiz model inference ===");
+    println!("source      : {}", seed_dir);
+    println!("name        : {}", model.name);
+    println!("seeds       : {}", blobs.len());
+    println!(
+        "delimiter   : {}",
+        model
+            .delimiter
+            .map(|d| format!("{:?}", d as char))
+            .unwrap_or_else(|| "none".into())
+    );
+    println!("length_pref : {}", model.length_prefixed);
+    if let Some(w) = model.length_width {
+        println!("length_width: {}", w);
+    }
+    println!("endian      : {:?}", model.endian);
+    println!("dictionary  : {} tokens", model.dictionary.len());
+    if verbose {
+        for (i, tok) in model.dictionary.iter().take(32).enumerate() {
+            let printable = String::from_utf8_lossy(tok);
+            if printable.chars().all(|c| c.is_ascii_graphic() || c == ' ') {
+                println!("  [{:02}] \"{}\"", i, printable);
+            } else {
+                println!("  [{:02}] {:02x?}", i, tok);
+            }
+        }
+        if model.dictionary.len() > 32 {
+            println!("  … +{} more", model.dictionary.len() - 32);
+        }
+    }
+
+    if let Some(path) = out_path {
+        write_inferred_model(&model, path)?;
+        println!("wrote       : {}", path);
+    }
+
+    println!("hint: use -m {} or refine into a formal JSON model", model.name);
+    Ok(())
+}
+
+fn write_inferred_model(model: &ProtocolModel, path: &str) -> Result<()> {
+    #[cfg(feature = "json-model")]
+    {
+        // Minimal JSON dump without full serde derive on ProtocolModel
+        let mut dict_json = String::from("[");
+        for (i, t) in model.dictionary.iter().enumerate() {
+            if i > 0 {
+                dict_json.push(',');
+            }
+            let esc = t
+                .iter()
+                .map(|b| {
+                    if (0x20..0x7f).contains(b) && *b != b'\\' && *b != b'"' {
+                        (*b as char).to_string()
+                    } else {
+                        format!("\\x{:02x}", b)
+                    }
+                })
+                .collect::<String>();
+            dict_json.push('"');
+            dict_json.push_str(&esc);
+            dict_json.push('"');
+        }
+        dict_json.push(']');
+
+        let endian = match model.endian {
+            nexsiz::input::model::ModelEndian::Big => "be",
+            nexsiz::input::model::ModelEndian::Little => "le",
+        };
+        let delim = model
+            .delimiter
+            .map(|d| format!("\"\\x{:02x}\"", d))
+            .unwrap_or_else(|| "null".into());
+        let lw = model
+            .length_width
+            .map(|w| w.to_string())
+            .unwrap_or_else(|| "null".into());
+
+        let body = format!(
+            r#"{{
+  "name": "{}",
+  "length_prefixed": {},
+  "length_width": {},
+  "endian": "{}",
+  "delimiter": {},
+  "dictionary": {},
+  "messages": []
+}}
+"#,
+            model.name, model.length_prefixed, lw, endian, delim, dict_json
+        );
+        fs::write(path, body).map_err(NexsizError::Io)?;
+        return Ok(());
+    }
+    #[cfg(not(feature = "json-model"))]
+    {
+        // Human-readable dump when json-model feature is off
+        let mut out = String::new();
+        out.push_str(&format!("# inferred model: {}\n", model.name));
+        out.push_str(&format!("length_prefixed={}\n", model.length_prefixed));
+        if let Some(w) = model.length_width {
+            out.push_str(&format!("length_width={}\n", w));
+        }
+        out.push_str(&format!("endian={:?}\n", model.endian));
+        out.push_str(&format!("delimiter={:?}\n", model.delimiter));
+        out.push_str("dictionary:\n");
+        for t in &model.dictionary {
+            out.push_str(&format!("  {:02x?}\n", t));
+        }
+        fs::write(path, out).map_err(NexsizError::Io)?;
+        Ok(())
+    }
 }
 
 fn main() {
@@ -384,6 +577,19 @@ fn main() {
             process::exit(1);
         }
     };
+
+    // Offline inference path — no campaign
+    if parsed.infer_model {
+        if let Err(e) = run_infer_model(
+            &parsed.cfg.seed_dir,
+            parsed.infer_out.as_deref(),
+            parsed.cfg.verbose,
+        ) {
+            eprintln!("infer-model error: {}", e);
+            process::exit(1);
+        }
+        process::exit(0);
+    }
 
     if parsed.nxs_list {
         match nexsiz::nxs::list_resolved(&parsed.cfg) {
