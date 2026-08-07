@@ -245,7 +245,5 @@ Apache License 2.0. Intended for operational use by offensive security teams.
 
 ## Author
 
-## 👩‍💻 Author
-
-[![GitHub](https://img.shields.io/badge/GitHub-Reva_Clarestya-181717?style=for-the-badge&logo=github)](https://github.com/revanakit)
-[![Website](https://img.shields.io/badge/Blog-nexsiz--blogs-4BC51D?style=for-the-badge&logo=githubpages&logoColor=black)](https://revanakit.github.io/nexsiz-blogs/)
+[![GitHub](https://img.shields.io/badge/GitHub-Reva_Clarestya-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/revanakit)
+[![Blog](https://img.shields.io/badge/Blog-nexsiz--blogs-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
