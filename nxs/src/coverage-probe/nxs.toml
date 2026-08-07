@@ -1,0 +1,11 @@
+id = "crash/coverage-probe"
+name = "coverage-probe"
+version = "1.0.0"
+categories = ["crash", "intrusive"]
+events = ["crash"]
+description = "Replay the crash input plus a small set of controlled variants and collect unique behavioural fingerprints (class + body hash). Exit 2 when more than one interesting path class is observed, or when meta indicated coverage hits and live probing still yields diverse responses. Intrusive."
+language = "rust"
+entry = "bin/nxs-coverage-probe"
+
+[args]
+# no script-specific required args

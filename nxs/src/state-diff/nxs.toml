@@ -1,0 +1,11 @@
+id = "crash/state-diff"
+name = "state-diff"
+version = "1.0.0"
+categories = ["crash", "intrusive"]
+events = ["crash"]
+description = "Replay the crash input multiple times and compare response signatures (status codes when present, body length, timing, content hash). Exit 2 when signatures diverge across shots or from meta.response_codes — indicates state-machine instability or non-deterministic failure. Intrusive."
+language = "rust"
+entry = "bin/nxs-state-diff"
+
+[args]
+# no script-specific required args

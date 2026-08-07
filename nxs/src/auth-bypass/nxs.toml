@@ -1,0 +1,11 @@
+id = "crash/auth-bypass"
+name = "auth-bypass"
+version = "1.0.0"
+categories = ["crash", "intrusive"]
+events = ["crash"]
+description = "Protocol-aware authentication sequence probe (FTP/SMTP/HTTP heuristics). Replays the crash input, then injects alternative credentials, skips auth steps, or reorders auth commands. Exit 2 when an unauthorized-looking successful transition is observed (e.g. 230 after bad PASS, 250 after unauthenticated MAIL, 200 after stripped Authorization). Intrusive."
+language = "rust"
+entry = "bin/nxs-auth-bypass"
+
+[args]
+# no script-specific required args
