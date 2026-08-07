@@ -1,6 +1,9 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 06/08/2026
+//! Files   : nexsiz/src/state/tracker.rs
+//!
 //! Hybrid state awareness tracker with grey-box coverage integration.
 
 use crate::common::types::*;
