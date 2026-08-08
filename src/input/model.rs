@@ -201,21 +201,43 @@ impl ProtocolModel {
         m.delimiter = Some(b'\n');
         m.messages = vec![
             MessageSpec::new("user")
-                .field(FieldSpec::new("cmd", FieldType::Command).values([b"USER"]))
-                .field(FieldSpec::new("sp", FieldType::Binary).values([b" "]).protected())
-                .field(FieldSpec::new("arg", FieldType::String).values([b"anonymous", b"guest"]))
-                .field(FieldSpec::new("crlf", FieldType::Binary).values([b"\r\n"]).protected()),
+                .field(FieldSpec::new("cmd", FieldType::Command).values([b"USER".as_slice()]))
+                .field(FieldSpec::new("sp", FieldType::Binary).values([b" ".as_slice()]).protected())
+                .field(
+                    FieldSpec::new("arg", FieldType::String)
+                        .values([b"anonymous".as_slice(), b"guest".as_slice()]),
+                )
+                .field(
+                    FieldSpec::new("crlf", FieldType::Binary)
+                        .values([b"\r\n".as_slice()])
+                        .protected(),
+                ),
             MessageSpec::new("pass")
-                .field(FieldSpec::new("cmd", FieldType::Command).values([b"PASS"]))
-                .field(FieldSpec::new("sp", FieldType::Binary).values([b" "]).protected())
-                .field(FieldSpec::new("arg", FieldType::String).values([b"guest", b""]))
-                .field(FieldSpec::new("crlf", FieldType::Binary).values([b"\r\n"]).protected()),
+                .field(FieldSpec::new("cmd", FieldType::Command).values([b"PASS".as_slice()]))
+                .field(FieldSpec::new("sp", FieldType::Binary).values([b" ".as_slice()]).protected())
+                .field(
+                    FieldSpec::new("arg", FieldType::String)
+                        .values([b"guest".as_slice(), b"".as_slice()]),
+                )
+                .field(
+                    FieldSpec::new("crlf", FieldType::Binary)
+                        .values([b"\r\n".as_slice()])
+                        .protected(),
+                ),
             MessageSpec::new("pwd")
-                .field(FieldSpec::new("cmd", FieldType::Command).values([b"PWD"]))
-                .field(FieldSpec::new("crlf", FieldType::Binary).values([b"\r\n"]).protected()),
+                .field(FieldSpec::new("cmd", FieldType::Command).values([b"PWD".as_slice()]))
+                .field(
+                    FieldSpec::new("crlf", FieldType::Binary)
+                        .values([b"\r\n".as_slice()])
+                        .protected(),
+                ),
             MessageSpec::new("quit")
-                .field(FieldSpec::new("cmd", FieldType::Command).values([b"QUIT"]))
-                .field(FieldSpec::new("crlf", FieldType::Binary).values([b"\r\n"]).protected()),
+                .field(FieldSpec::new("cmd", FieldType::Command).values([b"QUIT".as_slice()]))
+                .field(
+                    FieldSpec::new("crlf", FieldType::Binary)
+                        .values([b"\r\n".as_slice()])
+                        .protected(),
+                ),
         ];
         m.sequences = vec![
             SequenceSpec::new("login", vec!["user", "pass"]),
@@ -336,11 +358,13 @@ impl ProtocolModel {
                 .field(
                     FieldSpec::new("fixed_hdr", FieldType::Command)
                         .with_size(1)
-                        .values([b"\x10"]),
+                        .values([b"\x10".as_slice()]),
                 )
                 .field(FieldSpec::new("remaining_len", FieldType::Length))
                 .field(FieldSpec::new("proto_name_len", FieldType::Length).with_size(2))
-                .field(FieldSpec::new("proto_name", FieldType::String).values([b"MQTT"]))
+                .field(
+                    FieldSpec::new("proto_name", FieldType::String).values([b"MQTT".as_slice()]),
+                )
                 .field(FieldSpec::new("proto_level", FieldType::Numeric).with_size(1))
                 .field(FieldSpec::new("connect_flags", FieldType::Numeric).with_size(1))
                 .field(FieldSpec::new("keep_alive", FieldType::Numeric).with_size(2))
@@ -349,7 +373,7 @@ impl ProtocolModel {
                 .field(
                     FieldSpec::new("fixed_hdr", FieldType::Command)
                         .with_size(1)
-                        .values([b"\x30"]),
+                        .values([b"\x30".as_slice()]),
                 )
                 .field(FieldSpec::new("remaining_len", FieldType::Length))
                 .field(FieldSpec::new("topic_len", FieldType::Length).with_size(2))
@@ -391,13 +415,13 @@ impl ProtocolModel {
             .field(
                 FieldSpec::new("nbss_type", FieldType::Numeric)
                     .with_size(1)
-                    .values([b"\x00"]),
+                    .values([b"\x00".as_slice()]),
             )
             .field(FieldSpec::new("nbss_len", FieldType::Length).with_size(3))
             .field(
                 FieldSpec::new("protocol_id", FieldType::Command)
                     .with_size(4)
-                    .values([b"\xfeSMB"]),
+                    .values([b"\xfeSMB".as_slice()]),
             )
             .field(FieldSpec::new("header_len", FieldType::Numeric).with_size(2))
             .field(FieldSpec::new("credit_charge", FieldType::Numeric).with_size(2))
