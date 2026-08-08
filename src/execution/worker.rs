@@ -13,13 +13,14 @@
 //! Snapshot/Desocket Phase 2: ProtocolReset + SocketState via ReusePolicy.
 //! Snapshot/Desocket Phase 3: restore_epoch orchestration, cost-aware energy,
 //!   desocket/restore counters.
+//! Snapshot/Desocket Phase 4: resolve_desocket_from_model (JSON SpecDesocket).
 
 use crate::common::config::Config;
 use crate::common::types::*;
 use crate::common::utils::XorShift64;
 use crate::coverage::CoverageProvider;
 use crate::execution::connector::{execute_tcp, execute_udp, TcpConnector, UdpConnector};
-use crate::execution::desocket::{resolve_desocket, reset_or_reconnect, ProtocolReset};
+use crate::execution::desocket::{resolve_desocket_from_model, reset_or_reconnect, ProtocolReset};
 use crate::execution::reuse::ReusePolicy;
 use crate::input::corpus::SharedCorpus;
 use crate::input::integrity;
@@ -161,6 +162,9 @@ fn worker_main(
     let model_name = model.name.clone();
     let cfg_repair = mutator_cfg.repair_integrity;
 
+    // Resolve desocket before moving model into Mutator.
+    let desocket: Box<dyn ProtocolReset> = resolve_desocket_from_model(&model);
+
     let mut mutator = Mutator::new(
         rng_seed ^ 0xdeadbeef,
         model,
@@ -171,8 +175,6 @@ fn worker_main(
         false,
     )
     .with_template_prob(mutator_cfg.template_prob);
-
-    let desocket: Box<dyn ProtocolReset> = resolve_desocket(Some(&model_name));
 
     let mut fallback_encryptor: Box<dyn Encryptor> =
         resolve_encryptor_with_key(encryptor_name.as_deref(), enc_key.as_deref());
