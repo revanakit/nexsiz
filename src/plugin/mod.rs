@@ -1,6 +1,11 @@
-//! NEXSIZ – Plugin architecture
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/mod.rs
+//!
+//! NEXSIZ – Plugin architecture
+//! 
 //! Minimal trait-based plugin system for extensibility without changing
 //! default behaviour. Plugins are selected by name via Config / CLI.
 
