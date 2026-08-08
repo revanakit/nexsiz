@@ -8,6 +8,8 @@ Nexsiz (discovery)  →  crash / hang / interesting  →  NXS (existence & depth
 
 ## Official Set (complete)
 
+Source of truth for categories and membership is `nxs/categories.toml`. The table below mirrors the current official set:
+
 | id | Binary | Category | Exit 2 when |
 |----|--------|----------|-------------|
 | `crash/auto-repro` | `nxs-auto-repro` | safe, default | Crash/hang reproducible |
@@ -61,14 +63,16 @@ nexsiz ... --nxs external -v            # webhook (set NXS_WEBHOOK_URL)
 
 ### Async exit-code observation (design requirement)
 
-Spawn is **non-blocking**. A background reaper thread (`nxs-reaper`) keeps the `Child` handles and polls with `try_wait`:
+Spawn is **non-blocking**. A dedicated background reaper thread (`src/nxs/reaper.rs`) retains the `Child` handles and polls them with non-blocking `try_wait`:
 
-- Every exit code is logged: `[nexsiz/nxs] exit <id> → <code> …`
-- **Exit 2** (further vulnerability / exploit-assist) is escalated as a **secondary finding**:
-  - Atomic counter visible in status line (`nxs_sec`)
-  - Appended to `{output}/nxs-findings/secondary.jsonl`
-  - Sidecar `exit_code` written under the NXS `--out` directory when present
-- Fuzzer hot-path never waits on NXS; zombies are reaped by the background thread.
+- Every observed exit is logged: `[nexsiz/nxs] exit <id> → <code> …`
+- **Exit code 2** (further vulnerability / exploit-assist) is escalated as a **secondary finding**:
+  - Atomic counter exposed in the live status line (`nxs_sec`)
+  - Appended as a JSONL record to `{output}/nxs-findings/secondary.jsonl`
+  - When the NXS was given `--out`, a sidecar `exit_code` file is also written under that directory
+- The fuzzer hot-path never waits on any NXS process; zombies are reaped exclusively by the background thread.
+
+This design keeps campaign throughput independent of NXS latency while still capturing every secondary indication.
 
 ### Webhook
 
@@ -89,6 +93,6 @@ cd ~/.nexsiz/nxs/src/my-chain && cargo build --release
 cp target/release/nxs-* ~/.nexsiz/nxs/bin/
 ```
 
-See [CONTRACT.md](CONTRACT.md).
+Templates also exist for C, Go, and Python. Every custom NXS **must** obey the binding contract in [CONTRACT.md](CONTRACT.md).
 
 > Existence after discovery. Execute. Deepen. Exploit-assist.
