@@ -584,7 +584,9 @@ fn parse_field_type(s: &str) -> FieldType {
 
 #[cfg(feature = "json-model")]
 fn parse_token(s: &str) -> Vec<u8> {
-    if s.starts_with("\\x") || s.starts_with("\x") {
+    // Match literal backslash-x prefix ("\xNN" style tokens from JSON).
+    // Use raw string — "\x" alone is an invalid numeric escape in Rust.
+    if s.starts_with(r"\x") {
         let hex = s.trim_start_matches('\\').trim_start_matches('x');
         if hex.len() == 2 {
             if let Ok(v) = u8::from_str_radix(hex, 16) {
@@ -592,10 +594,10 @@ fn parse_token(s: &str) -> Vec<u8> {
             }
         }
     }
-    if s.contains("\\x") {
+    if s.contains(r"\x") {
         let mut out = Vec::new();
         let mut rest = s;
-        while let Some(pos) = rest.find("\\x") {
+        while let Some(pos) = rest.find(r"\x") {
             if pos > 0 {
                 out.extend_from_slice(rest[..pos].as_bytes());
             }
