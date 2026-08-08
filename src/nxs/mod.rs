@@ -11,7 +11,7 @@
 //!   resolve — categories.toml + search-path priority → executable paths
 //!   spawn   — non-blocking `Command::spawn` (returns Child)
 //!   reaper  — background thread that observes exit codes & records secondary findings
-//!   rate    — per-crash cooldown + per-event / total caps (Phase 4)
+//!   rate    — per-crash cooldown + per-event / total caps
 
 pub mod meta;
 pub mod rate;
