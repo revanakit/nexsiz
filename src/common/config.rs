@@ -71,7 +71,10 @@ pub struct ExecutionConfig {
     pub workers: usize,
     pub queue_size: usize,
     pub connection_reuse: bool,
+    /// Enable snapshot / restore of the target process.
     pub snapshot: bool,
+    /// Backend: "null" | "process" | "criu" (criu requires --features criu).
+    pub snapshot_backend: String,
     pub max_reuse_failures: u32,
 }
 
@@ -82,6 +85,7 @@ impl Default for ExecutionConfig {
             queue_size: 4096,
             connection_reuse: true,
             snapshot: false,
+            snapshot_backend: "process".to_string(),
             max_reuse_failures: 3,
         }
     }
@@ -266,6 +270,12 @@ impl Config {
                 "connection_reuse" => {
                     cfg.execution.connection_reuse = val == "true" || val == "1";
                 }
+                "snapshot" => {
+                    cfg.execution.snapshot = val == "true" || val == "1";
+                }
+                "snapshot_backend" | "snapshot_provider" => {
+                    cfg.execution.snapshot_backend = val.to_lowercase();
+                }
                 "seed_dir" => cfg.seed_dir = val.to_string(),
                 "output_dir" => cfg.output_dir = val.to_string(),
                 "verbose" => cfg.verbose = val == "true" || val == "1",
@@ -338,6 +348,9 @@ impl Config {
             fs::create_dir_all(format!("{}/nxs-meta", self.output_dir))?;
             fs::create_dir_all(format!("{}/nxs-out", self.output_dir))?;
             fs::create_dir_all(format!("{}/nxs-findings", self.output_dir))?;
+        }
+        if self.execution.snapshot {
+            fs::create_dir_all(format!("{}/snapshot", self.output_dir))?;
         }
         Ok(())
     }
