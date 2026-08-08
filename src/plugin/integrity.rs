@@ -1,7 +1,11 @@
-//! NEXSIZ – Protocol-Aware Integrity Repair plugins
-//! Author  : Revana
-//! Date    : 07/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
+//! Author  : Revana
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/integrity.rs
+//!
+//! NEXSIZ – Protocol-Aware Integrity Repair plugins
+//! 
 //! Trait + concrete repairers that apply the correct integrity strategy
 //! for each protocol family. Selected by name via Config / CLI.
 
