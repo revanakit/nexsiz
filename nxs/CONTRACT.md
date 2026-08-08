@@ -4,6 +4,9 @@
 **Status:** Binding for all official and custom NXS  
 **Parent:** Nexsiz (stateful network protocol fuzzer)
 
+> Breaking changes to this contract will increment the major version number.  
+> Additive clarifications and new optional fields remain compatible within the same major version.
+
 NXS are **executable programs** (binary or `chmod +x` script) triggered after an interesting event (crash, hang, interesting, new_coverage, new_state). They are actors, not passive handlers.
 
 ---
@@ -96,18 +99,26 @@ Minimal schema:
 └── artifacts/
 ```
 
-Suggested `report.json` fields:
+Suggested `report.json` fields (example of a successful secondary finding):
 
 ```json
 {
   "nxs_id": "crash/auto-repro",
   "nxs_version": "1.0.0",
   "exit_hint": 2,
-  "summary": "Repro confirmed; service dies on refined input",
-  "findings": [],
-  "artifacts": ["repro/refined.bin"],
+  "summary": "Repro confirmed; service dies on refined input after 3 deterministic shots",
+  "findings": [
+    {
+      "type": "reproducible_crash",
+      "confidence": "high",
+      "detail": "Connection reset on refined payload"
+    }
+  ],
+  "artifacts": ["repro/refined.bin", "logs/shot-01.txt"],
   "target": "10.0.0.5:21",
-  "crash_id": "id_000042"
+  "crash_id": "id_000042",
+  "shots": 3,
+  "elapsed_ms": 412
 }
 ```
 
