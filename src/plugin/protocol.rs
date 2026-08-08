@@ -1,6 +1,11 @@
-//! NEXSIZ – Protocol plugins (built-in + grammar-based + JSON models)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 07/08/2026
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/protocol.rs
+//!
+//! NEXSIZ – Protocol plugins (built-in + grammar-based + JSON models)
+//!
 
 use crate::input::model::{
     FieldSpec, MessageSpec, ModelChecksum, ModelEndian, ProtocolModel,
