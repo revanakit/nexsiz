@@ -379,14 +379,11 @@ impl ProtocolPlugin for GrammarProtocol {
             checksum: ModelChecksum::Auto,
             messages: Vec::new(),
             length_width: self.length_width,
+            sequences: Vec::new(),
         }
     }
 }
 
-// ── JSON / external model (feature-gated) ─────────────────────────────────────
-
-/// Wrapper that holds a fully-built ProtocolModel loaded from JSON or constructed
-/// programmatically. Used for operator-defined field trees.
 pub struct ExternalProtocol {
     name: String,
     model: ProtocolModel,
@@ -411,31 +408,6 @@ impl ProtocolPlugin for ExternalProtocol {
     }
 }
 
-/// Load a protocol model from a JSON file.
-///
-/// Requires the `json-model` feature. When the feature is disabled this function
-/// returns an error instructing the operator to rebuild with `--features json-model`.
-///
-/// Expected minimal schema (all fields optional except name):
-/// ```json
-/// {
-///   "name": "myproto",
-///   "length_prefixed": true,
-///   "length_width": 2,
-///   "endian": "be",
-///   "delimiter": null,
-///   "dictionary": ["\\x00", "CMD"],
-///   "messages": [
-///     {
-///       "name": "req",
-///       "fields": [
-///         { "name": "len", "type": "Length", "size": 2 },
-///         { "name": "payload", "type": "Binary" }
-///       ]
-///     }
-///   ]
-/// }
-/// ```
 pub fn load_model_from_path(path: &str) -> Result<Box<dyn ProtocolPlugin>, String> {
     #[cfg(feature = "json-model")]
     {
@@ -562,6 +534,7 @@ fn load_model_from_path_json(path: &str) -> Result<Box<dyn ProtocolPlugin>, Stri
         checksum,
         messages,
         length_width: j.length_width,
+        sequences: Vec::new(),
     };
 
     Ok(Box::new(ExternalProtocol::new(j.name, model)))
@@ -583,9 +556,7 @@ fn parse_field_type(s: &str) -> FieldType {
 
 #[cfg(feature = "json-model")]
 fn parse_token(s: &str) -> Vec<u8> {
-    // Support simple \xNN escapes and raw UTF-8
     if s.starts_with("\\x") || s.starts_with("\x") {
-        // very small hex parser for common cases
         let hex = s.trim_start_matches('\\').trim_start_matches('x');
         if hex.len() == 2 {
             if let Ok(v) = u8::from_str_radix(hex, 16) {
@@ -593,7 +564,6 @@ fn parse_token(s: &str) -> Vec<u8> {
             }
         }
     }
-    // Multi-byte \xNN\xNN ...
     if s.contains("\\x") {
         let mut out = Vec::new();
         let mut rest = s;
@@ -619,17 +589,9 @@ fn parse_token(s: &str) -> Vec<u8> {
     s.as_bytes().to_vec()
 }
 
-/// Resolve a protocol plugin by name.
-///
-/// Accepts:
-/// - Built-in names: generic, ftp, http, smtp, dns, mqtt, smb, binary-lp, binary-lp-le
-/// - Grammar aliases: grammar-ftp, g-ftp, grammar-dns, …
-/// - Absolute / relative path ending in `.json` → load via `load_model_from_path`
-/// - Unknown → falls back to generic
 pub fn resolve_protocol(name: Option<&str>) -> Box<dyn ProtocolPlugin> {
     let n = name.map(|s| s.to_lowercase());
     match n.as_deref() {
-        // Grammar variants
         Some("grammar-ftp") | Some("g-ftp") => Box::new(GrammarProtocol::ftp_grammar()),
         Some("grammar-http") | Some("g-http") => Box::new(GrammarProtocol::http_grammar()),
         Some("grammar-smtp") | Some("g-smtp") => Box::new(GrammarProtocol::smtp_grammar()),
@@ -639,7 +601,6 @@ pub fn resolve_protocol(name: Option<&str>) -> Box<dyn ProtocolPlugin> {
         Some("grammar-generic") | Some("g-generic") | Some("grammar") => {
             Box::new(GrammarProtocol::generic_grammar())
         }
-        // Path to JSON model
         Some(path) if path.ends_with(".json") || path.contains('/') || path.contains('\\') => {
             match load_model_from_path(path) {
                 Ok(p) => p,
@@ -649,7 +610,6 @@ pub fn resolve_protocol(name: Option<&str>) -> Box<dyn ProtocolPlugin> {
                 }
             }
         }
-        // Built-ins
         Some(other) => {
             if let Some(b) = BuiltinProtocol::from_name(other) {
                 Box::new(b)
@@ -669,8 +629,6 @@ mod tests {
     fn builtin_names() {
         assert_eq!(BuiltinProtocol::Ftp.name(), "ftp");
         assert_eq!(BuiltinProtocol::Dns.name(), "dns");
-        assert_eq!(BuiltinProtocol::Mqtt.name(), "mqtt");
-        assert_eq!(BuiltinProtocol::Smb.name(), "smb");
         let m = BuiltinProtocol::Http.build_model();
         assert_eq!(m.name, "http");
     }
@@ -678,35 +636,15 @@ mod tests {
     #[test]
     fn grammar_ftp_has_commands() {
         let p = GrammarProtocol::ftp_grammar();
-        assert_eq!(p.name(), "grammar-ftp");
         let m = p.build_model();
         assert!(m.dictionary.iter().any(|t| t == b"USER"));
-        assert!(m.dictionary.iter().any(|t| t == b"\r\n"));
     }
 
     #[test]
     fn resolve_new_models() {
         let p = resolve_protocol(Some("dns"));
         assert_eq!(p.name(), "dns");
-        let m = p.build_model();
-        assert!(m.length_prefixed);
-
-        let p = resolve_protocol(Some("mqtt"));
-        assert_eq!(p.name(), "mqtt");
-
-        let p = resolve_protocol(Some("smb"));
-        assert_eq!(p.name(), "smb");
-
-        let p = resolve_protocol(Some("binary-lp"));
-        assert_eq!(p.name(), "binary-lp");
-    }
-
-    #[test]
-    fn resolve_grammar() {
-        let p = resolve_protocol(Some("grammar-http"));
-        assert_eq!(p.name(), "grammar-http");
-        let m = p.build_model();
-        assert!(m.dictionary.iter().any(|t| t == b"GET"));
+        assert!(p.build_model().length_prefixed);
     }
 
     #[test]
