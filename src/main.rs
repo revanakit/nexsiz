@@ -1,7 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 07/08/2026
+//! Date    : 08/08/2026
 //! Files   : nexsiz/src/main.rs
 //!
 //! Entry point. Parses a minimal CLI (no external clap dependency) and
@@ -43,7 +43,7 @@ OPTIONS (short · long):
     -C, --cov <NAME>          Coverage: null|map|software (default: null)
     -S, --shm <ID>            Coverage SHM id (/nexsiz-cov-<ID>) for Frida agent
     -Y, --rpc <PATH>          Unix socket for Python/RPC campaign control
-    -t, --cmd <CMD>           Spawn target process for crash monitoring
+    -t, --cmd <CMD>           Spawn target process for crash monitoring / snapshot
     -w, --workers <N>         Worker threads              (default: #cores)
     -s, --seed <DIR>          Seed directory              (default: seeds)
     -o, --out <DIR>           Output directory            (default: output)
@@ -52,6 +52,9 @@ OPTIONS (short · long):
     -x, --execs <N>           Stop after N executions
     -R, --runtime <SECS>      Stop after SECS seconds
     -n, --no-reuse            Disable intelligent connection reuse
+    -Z, --snapshot            Enable process snapshot / restore
+        --snapshot-backend <B>  Backend: null|process|criu (default: process)
+                              criu requires --features criu and criu on PATH
     -r, --rng <N>             Deterministic RNG seed
     -L, --libafl              Use LibAFL path (needs --features libafl)
     -v, --verbose             Verbose logging
@@ -86,6 +89,12 @@ RPC / PYTHON CONTROL:
     Env: NEXSIZ_RPC_SOCK  Same as -Y
     Client: python3 python/nexsiz_client.py
 
+SNAPSHOT / DESOCKETING (Phase 1):
+    -Z --snapshot         Enable snapshot provider
+    --snapshot-backend process   Kill+respawn on crash (default when -Z)
+    --snapshot-backend criu      CRIU dump/restore (needs --features criu)
+    Requires -t/--cmd <target command>
+
 EXAMPLES:
     nexsiz -h 127.0.0.1 -p 21 -m ftp -s seeds/ftp -o out/ftp -v
     nexsiz -h 10.0.0.5 -p 53 -m dns -P tcp -v
@@ -94,6 +103,8 @@ EXAMPLES:
     nexsiz --infer-model -s seeds/custom --infer-out models/inferred.json
     nexsiz -h 127.0.0.1 -p 21 -m ftp --nxs default -v
     nexsiz --nxs default --nxs-list
+    nexsiz -t "./target_daemon" -Z --snapshot-backend process -m ftp -v
+    nexsiz -t "./target_daemon" -Z --snapshot-backend criu -m ftp -v   # needs --features criu
 
 Key: NEXSIZ_ENC_KEY / NEXSIZ_ENC_NONCE
 SHM: NEXSIZ_SHM_ID
@@ -290,6 +301,20 @@ fn parse_args() -> Result<Parsed> {
             }
             "-n" | "--no-reuse" => {
                 cfg.execution.connection_reuse = false;
+            }
+            "-Z" | "--snapshot" => {
+                cfg.execution.snapshot = true;
+            }
+            "--snapshot-backend" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(NexsizError::Config(
+                        "missing value for --snapshot-backend".into(),
+                    ));
+                }
+                cfg.execution.snapshot_backend = args[i].to_lowercase();
+                // Enabling a backend implies snapshot on
+                cfg.execution.snapshot = true;
             }
             "-r" | "--rng" | "--rng-seed" => {
                 i += 1;
