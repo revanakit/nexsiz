@@ -1,6 +1,12 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //! Author  : Revana
-//! Date    : 06/08/2026
+//! Date    : 08/08/2026
+//!
+//! Phase 1 Snapshot integration:
+//!   Engine owns SnapshotProvider. When snapshot=true the provider
+//!   manages target process lifecycle (prepare → take_snapshot →
+//!   restore-on-crash). ProcessMonitor is retained only as a legacy
+//!   fallback when snapshot is disabled.
 
 use crate::common::config::Config;
 use crate::common::error::Result;
@@ -9,6 +15,7 @@ use crate::common::utils::format_duration;
 use crate::coverage::{resolve_coverage_with_shm, CoverageProvider};
 use crate::execution::connector::{execute_tcp, execute_udp, TcpConnector, UdpConnector};
 use crate::execution::process_monitor::ProcessMonitor;
+use crate::execution::snapshot::{resolve_snapshot, SnapshotProvider};
 use crate::execution::worker::{spawn_workers, SharedStats};
 use crate::input::corpus::{Corpus, SharedCorpus};
 use crate::input::model::load_seeds_from_dir;
@@ -42,7 +49,10 @@ pub struct Engine {
     stats: Arc<SharedStats>,
     stop: Arc<AtomicBool>,
     logger: Logger,
+    /// Legacy process monitor — only populated when snapshot is disabled.
     process_monitor: Option<ProcessMonitor>,
+    /// Snapshot / restore provider (Null when disabled).
+    snapshot: Box<dyn SnapshotProvider>,
     oracle: Box<dyn Oracle>,
     plugins_summary: String,
     coverage: Arc<dyn CoverageProvider>,
@@ -97,17 +107,39 @@ impl Engine {
             fallback_oracle,
         ));
 
-        let process_monitor = if let Some(ref cmd) = cfg.target.target_cmd {
-            match ProcessMonitor::spawn(cmd) {
-                Ok(m) => Some(m),
-                Err(e) => {
-                    eprintln!("Warning: could not spawn target process: {}", e);
-                    None
+        // Snapshot provider takes ownership of process lifecycle when enabled.
+        let mut snapshot = resolve_snapshot(
+            cfg.execution.snapshot,
+            &cfg.execution.snapshot_backend,
+            cfg.target.target_cmd.as_deref(),
+            &cfg.output_dir,
+        );
+
+        // Legacy ProcessMonitor only when snapshot is off (keeps old behaviour).
+        let process_monitor = if !cfg.execution.snapshot {
+            if let Some(ref cmd) = cfg.target.target_cmd {
+                match ProcessMonitor::spawn(cmd) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        eprintln!("Warning: could not spawn target process: {}", e);
+                        None
+                    }
                 }
+            } else {
+                None
             }
         } else {
             None
         };
+
+        // Eager prepare + first snapshot when enabled.
+        if snapshot.is_enabled() {
+            if let Err(e) = snapshot.prepare() {
+                eprintln!("[nexsiz] warning: snapshot prepare failed: {}", e);
+            } else if let Err(e) = snapshot.take_snapshot() {
+                eprintln!("[nexsiz] warning: initial take_snapshot failed: {}", e);
+            }
+        }
 
         let rpc_path = cfg
             .rpc_sock
@@ -169,6 +201,7 @@ impl Engine {
             stop,
             logger,
             process_monitor,
+            snapshot,
             oracle,
             plugins_summary,
             coverage,
@@ -197,9 +230,20 @@ impl Engine {
                 self.cfg.nxs.set, self.cfg.nxs.events
             ));
         }
-        if let Some(ref mon) = self.process_monitor {
+
+        if self.snapshot.is_enabled() {
+            self.logger.info(&format!(
+                "Snapshot provider: {} (backend={})",
+                self.snapshot.name(),
+                self.cfg.execution.snapshot_backend
+            ));
+            if let Some(dir) = self.snapshot.image_dir() {
+                self.logger.info(&format!("Snapshot image dir: {}", dir.display()));
+            }
+        } else if let Some(ref mon) = self.process_monitor {
             self.logger.info(&format!("Process monitor active: {}", mon.cmd()));
         }
+
         if let Some(ref path) = self.cfg.rpc_sock {
             self.logger.info(&format!("RPC control socket: {}", path));
         }
@@ -302,7 +346,21 @@ impl Engine {
                 }
             }
 
-            if let Some(ref mon) = self.process_monitor {
+            // Snapshot path: detect crash → restore
+            if self.snapshot.is_enabled() {
+                if self.snapshot.crashed() {
+                    self.logger.warn(&format!(
+                        "Target process crashed (snapshot={}); restoring…",
+                        self.snapshot.name()
+                    ));
+                    self.stats.crashes.fetch_add(1, Ordering::Relaxed);
+                    if let Err(e) = self.snapshot.restore() {
+                        self.logger.warn(&format!("Snapshot restore failed: {}", e));
+                    } else {
+                        self.logger.info("Snapshot restore completed");
+                    }
+                }
+            } else if let Some(ref mon) = self.process_monitor {
                 if mon.crashed() {
                     self.logger.warn("Target process exited abnormally (crash indicator)");
                     self.stats.crashes.fetch_add(1, Ordering::Relaxed);
@@ -331,7 +389,9 @@ impl Engine {
             self.handle_result(&result);
         }
 
-        if let Some(ref mon) = self.process_monitor {
+        if self.snapshot.is_enabled() {
+            self.snapshot.terminate();
+        } else if let Some(ref mon) = self.process_monitor {
             mon.terminate();
         }
 
@@ -379,6 +439,18 @@ impl Engine {
                     let min_path = format!("{}.min", path);
                     let _ = fs::write(&min_path, min.serialize());
                     minimized_path = Some(min_path);
+                }
+            }
+
+            // After a crash observed via the network path, attempt restore
+            // if the snapshot provider is active (covers cases where the
+            // process died but ProcessMonitor/CRIU hasn't noticed yet).
+            if self.snapshot.is_enabled() {
+                if let Err(e) = self.snapshot.restore() {
+                    self.logger.warn(&format!(
+                        "Post-crash snapshot restore failed: {}",
+                        e
+                    ));
                 }
             }
 
@@ -449,8 +521,14 @@ impl Engine {
             0
         };
 
+        let snap = if self.snapshot.is_enabled() {
+            self.snapshot.name()
+        } else {
+            "-"
+        };
+
         self.logger.status(&format!(
-            "[{}] execs: {} ({:.0}/s) | corpus: {} | paths: {} | states: {} | cov_edges: {} | crashes: {} | hangs: {} | nxs_sec: {} | tracker_states: {} | py_oracle: {}/{} | py_proto: {} | py_int: {} | py_enc: {} | py_mut: {}",
+            "[{}] execs: {} ({:.0}/s) | corpus: {} | paths: {} | states: {} | cov_edges: {} | crashes: {} | hangs: {} | nxs_sec: {} | snap: {} | tracker_states: {} | py_oracle: {}/{} | py_proto: {} | py_int: {} | py_enc: {} | py_mut: {}",
             format_duration(elapsed),
             execs,
             eps,
@@ -461,6 +539,7 @@ impl Engine {
             crashes,
             hangs,
             nxs_secondary,
+            snap,
             self.tracker.state_count(),
             self.oracle_bridge.hits(),
             self.oracle_bridge.misses(),
@@ -511,6 +590,13 @@ impl Engine {
                 "inactive".into()
             }
         ));
+        if self.snapshot.is_enabled() {
+            self.logger.info(&format!(
+                "Snapshot provider: {} (backend={})",
+                self.snapshot.name(),
+                self.cfg.execution.snapshot_backend
+            ));
+        }
         if self.cfg.nxs.enabled {
             let sec = crate::nxs::secondary_count();
             self.logger.info(&format!(
