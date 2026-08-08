@@ -22,6 +22,8 @@ default = []
 libafl = ["dep:libafl", "dep:libafl_bolts", "dep:serde"]
 # Operator-defined protocol models via JSON (field trees without recompile)
 json-model = ["dep:serde", "dep:serde_json"]
+# CRIU-based process snapshot / restore (requires criu binary on PATH)
+criu = []
 
 [dependencies]
 libc = "0.2"
