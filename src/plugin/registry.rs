@@ -1,6 +1,11 @@
-//! NEXSIZ – Plugin registry
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/registry.rs
+//!
+//! NEXSIZ – Plugin registry
+//! 
 
 use crate::plugin::encryptor::{resolve_encryptor_with_key, Encryptor};
 use crate::plugin::integrity::{resolve_integrity_for_protocol, IntegrityRepair};
