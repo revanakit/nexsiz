@@ -3,10 +3,10 @@
 
 [categories]
 default   = ["crash/auto-repro", "crash/save-notify"]
-crash     = ["crash/auto-repro", "crash/differential-probe", "crash/save-notify", "crash/state-diff", "crash/coverage-probe", "crash/auth-bypass"]
+crash     = ["crash/auto-repro", "crash/differential-probe", "crash/save-notify", "crash/state-diff", "crash/coverage-probe", "crash/auth-bypass", "crash/chain-repro"]
 hang      = ["hang/timeout-analyzer"]
 safe      = ["crash/auto-repro", "crash/save-notify"]
-intrusive = ["crash/differential-probe", "crash/state-diff", "crash/coverage-probe", "crash/auth-bypass"]
+intrusive = ["crash/differential-probe", "crash/state-diff", "crash/coverage-probe", "crash/auth-bypass", "crash/chain-repro"]
 external  = ["external/notify-webhook"]
 
 [defaults]

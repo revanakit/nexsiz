@@ -18,6 +18,7 @@ Source of truth for categories and membership is `nxs/categories.toml`. The tabl
 | `crash/state-diff` | `nxs-state-diff` | intrusive | Response signature divergence across shots |
 | `crash/coverage-probe` | `nxs-coverage-probe` | intrusive | Path diversity / mixed behavioural classes |
 | `crash/auth-bypass` | `nxs-auth-bypass` | intrusive | Unauthorized-looking success (FTP/SMTP/HTTP) |
+| `crash/chain-repro` | `nxs-chain-repro` | intrusive | Chain escalation (leak, class transition, response divergence) |
 | `hang/timeout-analyzer` | `nxs-timeout-analyzer` | hang | Hard hang confirmed |
 | `external/notify-webhook` | `nxs-notify-webhook` | external | — (HTTP notify) |
 
@@ -42,6 +43,7 @@ NXS_E2E_TARGET=127.0.0.1:21 ./tests/e2e.sh
 nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs default -v
 nexsiz --nxs default --nxs-list          # resolve paths, exit
 nexsiz ... --nxs intrusive --nxs-cooldown 60 --nxs-max-per-event 20 -v
+nexsiz ... --nxs crash/chain-repro -v    # explicit single NXS
 nexsiz ... --nxs external -v            # webhook (set NXS_WEBHOOK_URL)
 ```
 

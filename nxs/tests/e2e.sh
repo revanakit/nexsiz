@@ -42,6 +42,7 @@ OFFICIAL=(
   nxs-state-diff
   nxs-coverage-probe
   nxs-auth-bypass
+  nxs-chain-repro
 )
 
 # ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ else
 fi
 
 # New NXS also reject missing inputs
-for b in nxs-state-diff nxs-coverage-probe nxs-auth-bypass; do
+for b in nxs-state-diff nxs-coverage-probe nxs-auth-bypass nxs-chain-repro; do
   if "$BIN/$b" --target 127.0.0.1:9 >/dev/null 2>&1; then
     fail "$b should reject missing --crash/--meta"
   else
@@ -219,6 +220,17 @@ else
     ok "auth-bypass live exit=$rc"
   else
     fail "auth-bypass live unexpected exit=$rc"
+  fi
+
+  set +e
+  "$BIN/nxs-chain-repro" --crash "$CRASH_FILE" --target "$T" --model ftp \
+    --out "$TMP/out-chain" --timeout 10 --shots 4 -v >"$TMP/chain.stdout" 2>"$TMP/chain.stderr"
+  rc=$?
+  set -e
+  if [[ $rc -eq 0 || $rc -eq 1 || $rc -eq 2 || $rc -eq 3 ]]; then
+    ok "chain-repro live exit=$rc"
+  else
+    fail "chain-repro live unexpected exit=$rc"
   fi
 fi
 
