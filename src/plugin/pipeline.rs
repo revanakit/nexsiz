@@ -1,7 +1,11 @@
-//! NEXSIZ – Custom Protocol Crypto Framework (Phase 3)
-//! Author  : Revana
-//! Date    : 05/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
+//! Author  : Revana
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/pipeline.rs
+//!
+//! NEXSIZ – Custom Protocol Crypto Framework (Phase 3)
+//! 
 //! Extensible stream-cipher trait, generic composition pipeline, and
 //! named crypto profiles. Zero extra dependencies. Fully backward-compatible
 //! with existing Encryptor plugins.
