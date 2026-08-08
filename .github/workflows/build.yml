@@ -50,6 +50,14 @@ jobs:
         continue-on-error: true
         run: cargo clippy --all-targets --features libafl --message-format=short 2>&1 | tee clippy-libafl.log
 
+      - name: Clippy features=json-model (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets --features json-model --message-format=short 2>&1 | tee clippy-json-model.log
+
+      - name: Clippy features=libafl,json-model (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets --features libafl,json-model --message-format=short 2>&1 | tee clippy-libafl-json.log
+
   # ─────────────────────────────────────────────────────────────
   # Validate Frida / external SHM coverage agent (hard gate)
   # ─────────────────────────────────────────────────────────────
@@ -263,6 +271,86 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────
+  # Release build — JSON protocol models (operator-defined field trees)
+  # ─────────────────────────────────────────────────────────────
+  build-json-model:
+    name: Release (features = json-model)
+    runs-on: ubuntu-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with json-model
+        run: cargo build --release --features json-model
+
+      - name: Show binary info
+        run: |
+          ls -lh target/release/nexsiz
+          file target/release/nexsiz || true
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - name: Smoke test (--help)
+        run: |
+          ./target/release/nexsiz --help || ./target/release/nexsiz -? || true
+          ./target/release/nexsiz -V || true
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-json-model
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────
+  # Release build — LibAFL + JSON models (combined feature set)
+  # ─────────────────────────────────────────────────────────────
+  build-libafl-json:
+    name: Release (features = libafl,json-model)
+    runs-on: ubuntu-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with libafl,json-model
+        run: cargo build --release --features libafl,json-model
+
+      - name: Show binary info
+        run: |
+          ls -lh target/release/nexsiz
+          file target/release/nexsiz || true
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - name: Smoke test (--help)
+        run: |
+          ./target/release/nexsiz --help || ./target/release/nexsiz -? || true
+          ./target/release/nexsiz -V || true
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl-json
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────
   # Optional: LibAFL on latest stable (continue-on-error)
   # ─────────────────────────────────────────────────────────────
   build-libafl-stable:
@@ -296,7 +384,7 @@ jobs:
   package:
     name: Package release archives
     runs-on: ubuntu-latest
-    needs: [build-default, build-libafl, build-nxs, test-nxs]
+    needs: [build-default, build-libafl, build-json-model, build-libafl-json, build-nxs, test-nxs]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -312,6 +400,18 @@ jobs:
         with:
           name: nexsiz-linux-x86_64-libafl
           path: dist/libafl
+
+      - name: Download json-model binary
+        uses: actions/download-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-json-model
+          path: dist/json-model
+
+      - name: Download libafl+json-model binary
+        uses: actions/download-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl-json
+          path: dist/libafl-json
 
       - name: Download NXS binaries
         uses: actions/download-artifact@v4
@@ -382,8 +482,7 @@ jobs:
           cp -a config "${PKG}/" 2>/dev/null || true
           cp -a examples "${PKG}/" 2>/dev/null || true
           cp LICENSE README.md "${PKG}/" 2>/dev/null || true
-          cp nexsiz-linux-x86_64-default-version-*/NXS_BUILD.txt "${PKG}/" 2>/dev/null || \
-            cat > "${PKG}/NXS_BUILD.txt" << 'EOF'
+          cat > "${PKG}/NXS_BUILD.txt" << 'EOF'
           NXS binaries are in nxs/bin/. Use: ./nexsiz --nxs default -v
           EOF
           cat > "${PKG}/FRIDA_COVERAGE.txt" << 'EOF'
@@ -393,6 +492,61 @@ jobs:
           SHM id:               -S <id>
           LibAFL mode: add -L (and -w N for multi-core LLMP).
           See agents/frida/README.md.
+          EOF
+          zip -r "${PKG}.zip" "${PKG}"
+          ls -lh "${PKG}.zip"
+
+      - name: Assemble json-model package
+        run: |
+          set -euo pipefail
+          VER=$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')
+          PKG="nexsiz-linux-x86_64-json-model-version-(${VER})"
+          mkdir -p "${PKG}/nxs/bin"
+          cp dist/json-model/nexsiz "${PKG}/"
+          chmod +x "${PKG}/nexsiz"
+          cp -a dist/nxs/. "${PKG}/nxs/bin/" || true
+          chmod +x "${PKG}/nxs/bin/"* 2>/dev/null || true
+          cp nxs/CONTRACT.md nxs/README.md nxs/categories.toml "${PKG}/nxs/" 2>/dev/null || true
+          cp -a agents "${PKG}/"
+          cp -a config "${PKG}/" 2>/dev/null || true
+          cp -a examples "${PKG}/" 2>/dev/null || true
+          cp LICENSE README.md "${PKG}/" 2>/dev/null || true
+          cat > "${PKG}/JSON_MODEL.txt" << 'EOF'
+          Nexsiz JSON Protocol Models
+          ---------------------------
+          This binary was built with --features json-model.
+
+          Load an operator-defined model (field trees without recompile):
+            ./nexsiz -h <host> -p <port> -m path/to/model.json -v
+
+          See models/ and docs for the JSON schema (messages, fields,
+          desocket sequences, dictionary, endian, checksum).
+          EOF
+          zip -r "${PKG}.zip" "${PKG}"
+          ls -lh "${PKG}.zip"
+
+      - name: Assemble libafl+json-model package
+        run: |
+          set -euo pipefail
+          VER=$(grep -m1 '^version' Cargo.toml | sed 's/.*= *"\(.*\)"/\1/')
+          PKG="nexsiz-linux-x86_64-libafl-json-version-(${VER})"
+          mkdir -p "${PKG}/nxs/bin"
+          cp dist/libafl-json/nexsiz "${PKG}/"
+          chmod +x "${PKG}/nexsiz"
+          cp -a dist/nxs/. "${PKG}/nxs/bin/" || true
+          chmod +x "${PKG}/nxs/bin/"* 2>/dev/null || true
+          cp nxs/CONTRACT.md nxs/README.md nxs/categories.toml "${PKG}/nxs/" 2>/dev/null || true
+          cp -a agents "${PKG}/"
+          cp -a config "${PKG}/" 2>/dev/null || true
+          cp -a examples "${PKG}/" 2>/dev/null || true
+          cp LICENSE README.md "${PKG}/" 2>/dev/null || true
+          cat > "${PKG}/FEATURES.txt" << 'EOF'
+          Built with: --features libafl,json-model
+
+          LibAFL:  -L  (and -w N for multi-core LLMP)
+          JSON:    -m path/to/model.json
+          Coverage: -C map -S <shm-id>  (with Frida agent)
+          NXS:     --nxs default
           EOF
           zip -r "${PKG}.zip" "${PKG}"
           ls -lh "${PKG}.zip"
@@ -427,6 +581,8 @@ jobs:
           path: |
             nexsiz-linux-x86_64-default-version-*.zip
             nexsiz-linux-x86_64-libafl-version-*.zip
+            nexsiz-linux-x86_64-json-model-version-*.zip
+            nexsiz-linux-x86_64-libafl-json-version-*.zip
             nxs-linux-x86_64-version-*.zip
             nexsiz-source-version-*.zip
           if-no-files-found: error
