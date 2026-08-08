@@ -1,8 +1,8 @@
 [package]
 name = "nxs-chain-repro"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
-description = "Official NXS: multi-shot chain observation with info-leak prioritisation after crash discovery"
+description = "Official NXS: multi-shot chain observation with controlled variants and info-leak prioritisation"
 license = "Apache-2.0"
 
 [[bin]]

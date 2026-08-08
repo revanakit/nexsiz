@@ -1,11 +1,11 @@
 id = "crash/chain-repro"
 name = "chain-repro"
-version = "1.0.0"
+version = "1.1.0"
 categories = ["crash", "intrusive"]
 events = ["crash", "hang"]
-description = "Multi-shot deterministic chain observation after crash discovery. Performs sequential replays (prefer minimised), classifies each shot (crash/hang/responded/unreachable), and prioritises info-leak patterns (size anomaly, path/credential-like content, unexpected binary in text protocols, success-after-crash banners). Light protocol awareness for FTP/SMTP/HTTP + generic binary. Exit 2 only on chain/escalation indicators. Intrusive."
+description = "Multi-shot chain observation after crash discovery (Phase 2). Shot 0 is the original (prefer minimised); subsequent shots apply deliberate controlled mutations. Classifies each shot, extracts protocol status (FTP/SMTP/HTTP), scores info-leak signals, and detects chain escalations (class transitions, response divergence, leak growth). Exit 2 only on escalation indicators. Intrusive."
 language = "rust"
 entry = "bin/nxs-chain-repro"
 
 [args]
-# --shots <n>   number of sequential shots (default 5, max 12)
+# --shots <n>   number of sequential shots including baseline (default 5, max 12)
