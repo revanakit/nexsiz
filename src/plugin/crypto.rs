@@ -4,17 +4,61 @@
 //! Date    : 08/08/2026
 //! Files   : nexsiz/src/plugin/crypto.rs
 //!
-//! NEXSIZ – Pure-Rust cryptographic primitives for Encryptor plugins
+//! ## Module Overview
 //!
-//! Production-ready, dependency-free implementations for offensive protocol
-//! fuzzing. Determinism, reproducibility, and operational control first.
+//! Pure-Rust cryptographic primitives module for protocol fuzzing automation.
+//! Provides zero-dependency, RFC-compliant implementations optimized for
+//! stateful network protocol testing and offensive security research.
 //!
-//! Guarantees:
-//!   - ChaCha20 matches RFC 8439
-//!   - Poly1305 matches RFC 8439 (26-bit limb, correct clamp/freeze)
-//!   - ChaCha20-Poly1305 AEAD matches RFC 8439 construction
-//!   - HKDF-SHA256 (RFC 5869) via pure-Rust SHA-256
-//! Constant-time properties are NOT guaranteed (acceptable for fuzzing).
+//! ## Cryptographic Guarantees
+//!
+//! ### Specification Compliance
+//!   - **ChaCha20**: RFC 8439 §2.4 – stream cipher with configurable counter
+//!   - **Poly1305**: RFC 8439 §2.5 – 26-bit limb representation with RFC-correct
+//!     clamping (r clamp mask 0x0ffffffc_0ffffffc_0ffffffc_0ffffffc_00ffffff)
+//!     and conditional subtraction (freeze) for field reduction modulo 2^130-5
+//!   - **ChaCha20-Poly1305 AEAD**: RFC 8439 §2.8 – authenticated encryption with
+//!     associated data (one-time key derivation, authenticated padding layout)
+//!   - **HKDF-SHA256**: RFC 5869 – HMAC-based key derivation with extract-expand
+//!     using pure-Rust SHA-256 (FIPS 180-4)
+//!
+//! ### Operational Design
+//!   - **Deterministic**: Seeded PRNG (LCG 0x5DEECE66D) ensures reproducible
+//!     test campaigns across multiple runs with identical random state
+//!   - **No External Dependencies**: All cryptographic operations implemented
+//!     inline; suitable for embedded and sandboxed fuzzing frameworks
+//!   - **Counter-Mode Flexibility**: ChaCha20 counter accessible for seeking
+//!     arbitrary keystream positions; critical for parallel fuzzing workloads
+//!   - **Constant-Time Guarantees**: NOT provided. Implementations prioritize
+//!     performance and clarity for offensive fuzzing; side-channel hardening
+//!     is out-of-scope for non-interactive protocol testing
+//!
+//! ## Module Structure
+//!
+//!   - `ChaCha20` – Streaming cipher with position-independent keystream access
+//!   - `Poly1305` – One-time authenticator (requires fresh OTK per message)
+//!   - `ChaCha20Poly1305` – RFC 8439 AEAD composition with tag verification
+//!   - `hkdf_extract()` / `hkdf_expand()` – Key material derivation
+//!   - `make_nonce()` – Nonce generation with Fixed/Incrementing/Random modes
+//!   - `parse_key_material()` – Flexible hex string or literal key parsing
+//!
+//! ## Usage Patterns
+//!
+//! For stateful protocol encryption:
+//! ```ignore
+//! let aead = ChaCha20Poly1305::new(&key);
+//! let nonce = make_nonce(b"session-id", NonceMode::Incrementing);
+//! let ct = aead.seal(&nonce, &aad, &plaintext);
+//! let pt = aead.open(&nonce, &aad, &ct)?;
+//! ```
+//!
+//! For key derivation from weak entropy:
+//! ```ignore
+//! let salt = b"protocol-version-1";
+//! let ikm = fuzzer_seed;
+//! let prk = hkdf_extract(salt, ikm);
+//! let key = hkdf_expand(&prk, b"context", 32);
+//! ```
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
