@@ -9,8 +9,10 @@
 //!   3. else none
 //! Mutator internal repair is always OFF in production workers.
 //!
-//! Phase 3 template_prob / on_interesting field energy.
-//! Phase 2 desocket: ProtocolReset + SocketState via ReusePolicy.
+//! Protocol Phase 3: template_prob / on_interesting field energy.
+//! Snapshot/Desocket Phase 2: ProtocolReset + SocketState via ReusePolicy.
+//! Snapshot/Desocket Phase 3: restore_epoch orchestration, cost-aware energy,
+//!   desocket/restore counters.
 
 use crate::common::config::Config;
 use crate::common::types::*;
@@ -42,6 +44,13 @@ pub struct SharedStats {
     pub hangs: AtomicU64,
     pub new_paths: AtomicU64,
     pub new_states: AtomicU64,
+    /// Snapshot restore count (Phase 3).
+    pub restores: AtomicU64,
+    /// Successful protocol-level desocket resets (Phase 3).
+    pub desockets: AtomicU64,
+    /// Monotonic epoch bumped by Engine after every successful restore.
+    /// Workers observe this to force post-restore reconnect.
+    pub restore_epoch: AtomicU64,
 }
 
 impl SharedStats {
@@ -52,6 +61,9 @@ impl SharedStats {
             hangs: AtomicU64::new(0),
             new_paths: AtomicU64::new(0),
             new_states: AtomicU64::new(0),
+            restores: AtomicU64::new(0),
+            desockets: AtomicU64::new(0),
+            restore_epoch: AtomicU64::new(0),
         }
     }
 }
@@ -160,7 +172,6 @@ fn worker_main(
     )
     .with_template_prob(mutator_cfg.template_prob);
 
-    // Phase 2: protocol-aware desocket provider
     let desocket: Box<dyn ProtocolReset> = resolve_desocket(Some(&model_name));
 
     let mut fallback_encryptor: Box<dyn Encryptor> =
@@ -172,6 +183,8 @@ fn worker_main(
     let mut bridge_repairer: Option<Box<dyn IntegrityRepair>> = None;
 
     let mut last_mutator_gen: u64 = 0;
+    /// Phase 3: last observed restore epoch
+    let mut local_restore_epoch: u64 = 0;
 
     let is_udp = target.protocol == "udp";
     let mut tcp_connector = TcpConnector::new(target.socket_addr(), target.timeout);
@@ -180,6 +193,15 @@ fn worker_main(
     let mut prev_state: Option<u64> = None;
 
     while !stop.load(Ordering::Relaxed) {
+        // --- Phase 3: post-restore orchestration ---
+        let epoch = stats.restore_epoch.load(Ordering::Relaxed);
+        if epoch != local_restore_epoch {
+            local_restore_epoch = epoch;
+            // Force all workers off any stale connection after process restore
+            tcp_connector.close();
+            reuse.force_reset();
+        }
+
         let gen = mutator_bridge.generation();
         if gen != last_mutator_gen {
             last_mutator_gen = gen;
@@ -226,7 +248,11 @@ fn worker_main(
 
         coverage.reset();
 
-        // --- Connection decision (Phase 2 desocket-aware) ---
+        // Track whether this iteration paid a desocket or full-reconnect cost
+        let mut paid_desocket = false;
+        let mut paid_reconnect = false;
+
+        // --- Connection decision (Phase 2/3 desocket-aware) ---
         let do_reuse = if is_udp {
             false
         } else if !exec_cfg.connection_reuse {
@@ -234,23 +260,22 @@ fn worker_main(
         } else if reuse.should_reuse() {
             true
         } else if reuse.needs_desocket() && desocket.is_enabled() {
-            // Try protocol-level reset before full reconnect
             match reset_or_reconnect(desocket.as_ref(), &mut tcp_connector) {
                 Ok(()) => {
                     if tcp_connector.is_connected() {
-                        // If reset kept the connection, mark clean
-                        if desocket.is_enabled() {
-                            // reset_or_reconnect may have reconnected; check
-                            reuse.on_desocket_ok();
-                        }
+                        reuse.on_desocket_ok();
+                        paid_desocket = true;
+                        stats.desockets.fetch_add(1, Ordering::Relaxed);
                         true
                     } else {
                         reuse.on_desocket_fallback();
+                        paid_reconnect = true;
                         false
                     }
                 }
                 Err(_) => {
                     reuse.on_desocket_fallback();
+                    paid_reconnect = true;
                     false
                 }
             }
@@ -260,6 +285,7 @@ fn worker_main(
 
         if !is_udp && !do_reuse {
             reuse.on_reconnect();
+            paid_reconnect = true;
             let _ = tcp_connector.connect();
         }
 
@@ -334,6 +360,13 @@ fn worker_main(
             }
             if cov_fb.new_edges > 0 {
                 interesting_child.energy *= 1.0 + (cov_fb.new_edges as f64 * 0.15);
+            }
+            // Phase 3 cost-aware energy: cases that survived after paying
+            // desocket/reconnect cost are slightly more valuable to re-explore.
+            if paid_desocket {
+                interesting_child.energy *= 1.12;
+            } else if paid_reconnect {
+                interesting_child.energy *= 1.06;
             }
             let _ = corpus.add_if_new(interesting_child);
             corpus.mark_interesting(result.seed_id, Some(result.state_hash));
