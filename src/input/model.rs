@@ -4,6 +4,7 @@
 //!
 //! Phase 1–2: FieldSpec/MessageSpec, formal built-ins, grammar inference.
 //! Phase 3: SequenceSpec multi-message flows (login → pass, connect → publish).
+//! Phase 4: DesocketSpec — operator-defined protocol reset sequences (JSON models).
 
 use crate::common::error::{NexsizError, Result};
 use crate::common::types::*;
@@ -27,6 +28,28 @@ pub enum ModelChecksum {
     Crc16,
     Crc32,
     OnesComplement,
+}
+
+/// Operator-defined protocol-level reset sequences (JSON / external models).
+#[derive(Debug, Clone, Default)]
+pub struct DesocketSpec {
+    /// Ordered list of byte sequences to try when resetting protocol state.
+    pub sequences: Vec<Vec<u8>>,
+    /// Optional goodbye / logout bytes sent before intentional close.
+    pub goodbye: Option<Vec<u8>>,
+    /// When true (default), any non-hard-close outcome after a sequence is success.
+    /// When false, a non-empty response is required.
+    pub success_on_response: bool,
+}
+
+impl DesocketSpec {
+    pub fn new() -> Self {
+        Self {
+            sequences: Vec::new(),
+            goodbye: None,
+            success_on_response: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +147,8 @@ pub struct ProtocolModel {
     pub length_width: Option<usize>,
     /// Multi-step message sequences (optional; Phase 3).
     pub sequences: Vec<SequenceSpec>,
+    /// Operator-defined desocket / reset sequences (JSON models; Phase 4).
+    pub desocket: Option<DesocketSpec>,
 }
 
 impl ProtocolModel {
@@ -150,6 +175,7 @@ impl ProtocolModel {
             messages: Vec::new(),
             length_width: None,
             sequences: Vec::new(),
+            desocket: None,
         }
     }
 
@@ -629,5 +655,10 @@ mod tests {
         let m = infer_model_from_bytes("inferred-ftp", &[seed], &[]);
         assert_eq!(m.delimiter, Some(b'\n'));
         assert!(m.dictionary.iter().any(|t| t == b"USER"));
+    }
+
+    #[test]
+    fn generic_has_no_desocket() {
+        assert!(ProtocolModel::generic().desocket.is_none());
     }
 }
