@@ -5,10 +5,10 @@
 //! Files   : nexsiz/src/plugin/protocol.rs
 //!
 //! NEXSIZ – Protocol plugins (built-in + grammar-based + JSON models)
-//!
+//! Phase 4: JSON `desocket` block → ProtocolModel.desocket (SpecDesocket)
 
 use crate::input::model::{
-    FieldSpec, MessageSpec, ModelChecksum, ModelEndian, ProtocolModel,
+    DesocketSpec, FieldSpec, MessageSpec, ModelChecksum, ModelEndian, ProtocolModel,
 };
 use crate::common::types::FieldType;
 
@@ -380,6 +380,7 @@ impl ProtocolPlugin for GrammarProtocol {
             messages: Vec::new(),
             length_width: self.length_width,
             sequences: Vec::new(),
+            desocket: None,
         }
     }
 }
@@ -447,6 +448,13 @@ fn load_model_from_path_json(path: &str) -> Result<Box<dyn ProtocolPlugin>, Stri
     }
 
     #[derive(Debug, Deserialize)]
+    struct JsonDesocket {
+        sequences: Option<Vec<String>>,
+        goodbye: Option<String>,
+        success_on_response: Option<bool>,
+    }
+
+    #[derive(Debug, Deserialize)]
     struct JsonModel {
         name: String,
         length_prefixed: Option<bool>,
@@ -456,6 +464,7 @@ fn load_model_from_path_json(path: &str) -> Result<Box<dyn ProtocolPlugin>, Stri
         dictionary: Option<Vec<String>>,
         messages: Option<Vec<JsonMessage>>,
         checksum: Option<String>,
+        desocket: Option<JsonDesocket>,
     }
 
     let data = fs::read_to_string(path).map_err(|e| format!("read {}: {}", path, e))?;
@@ -525,6 +534,24 @@ fn load_model_from_path_json(path: &str) -> Result<Box<dyn ProtocolPlugin>, Stri
         }
     }
 
+    let desocket = j.desocket.and_then(|jd| {
+        let sequences: Vec<Vec<u8>> = jd
+            .sequences
+            .unwrap_or_default()
+            .iter()
+            .map(|s| parse_token(s))
+            .filter(|v| !v.is_empty())
+            .collect();
+        if sequences.is_empty() {
+            return None;
+        }
+        Some(DesocketSpec {
+            sequences,
+            goodbye: jd.goodbye.map(|g| parse_token(&g)).filter(|v| !v.is_empty()),
+            success_on_response: jd.success_on_response.unwrap_or(true),
+        })
+    });
+
     let model = ProtocolModel {
         name: j.name.clone(),
         dictionary,
@@ -535,6 +562,7 @@ fn load_model_from_path_json(path: &str) -> Result<Box<dyn ProtocolPlugin>, Stri
         messages,
         length_width: j.length_width,
         sequences: Vec::new(),
+        desocket,
     };
 
     Ok(Box::new(ExternalProtocol::new(j.name, model)))
@@ -638,6 +666,7 @@ mod tests {
         let p = GrammarProtocol::ftp_grammar();
         let m = p.build_model();
         assert!(m.dictionary.iter().any(|t| t == b"USER"));
+        assert!(m.desocket.is_none());
     }
 
     #[test]
