@@ -11,6 +11,15 @@
     "PONG",
     "\\x00\\x00\\x00\\x00"
   ],
+  "desocket": {
+    "sequences": [
+      "\\x00\\x00\\x00\\x00",
+      "\\x00\\x00\\x00\\x01\\x00",
+      "\\x00\\x00\\x00\\x01\\xff"
+    ],
+    "goodbye": "\\x00\\x00\\x00\\x01\\xfe",
+    "success_on_response": true
+  },
   "messages": [
     {
       "name": "request",
