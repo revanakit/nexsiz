@@ -11,11 +11,14 @@
 //!   1. Protocol-aware reset sequences (QUIT / RSET / DISCONNECT / …)
 //!   2. SocketState tracking (clean vs polluted)
 //!   3. Integration with ReusePolicy and post-snapshot-restore reconnect
+//!   4. Heuristic length-prefixed binary reset (BinaryLpDesocket)
 
+mod binary;
 mod builtin;
 mod null;
 mod state;
 
+pub use binary::BinaryLpDesocket;
 pub use builtin::BuiltinDesocket;
 pub use null::NullDesocket;
 pub use state::{SocketState, SocketStateKind};
@@ -52,10 +55,28 @@ pub fn resolve_desocket(model_name: Option<&str>) -> Box<dyn ProtocolReset> {
     let name = model_name.unwrap_or("").to_ascii_lowercase();
     match name.as_str() {
         "" | "generic" | "null" | "none" => Box::new(NullDesocket::new()),
+
+        // Text / classic protocols
         "ftp" | "grammar-ftp" | "g-ftp" => Box::new(BuiltinDesocket::ftp()),
         "smtp" | "grammar-smtp" | "g-smtp" => Box::new(BuiltinDesocket::smtp()),
         "mqtt" | "grammar-mqtt" | "g-mqtt" => Box::new(BuiltinDesocket::mqtt()),
         "http" | "https" | "grammar-http" | "g-http" => Box::new(BuiltinDesocket::http()),
+
+        // Length-prefixed binary (2-byte big-endian – most common)
+        "binary-lp" | "lp" | "binary" | "grammar-binary-lp" | "g-binary-lp" | "g-lp" => {
+            Box::new(BinaryLpDesocket::be2())
+        }
+
+        // 2-byte little-endian
+        "binary-lp-le" | "lp-le" | "binary-le" | "grammar-binary-lp-le" | "g-lp-le" => {
+            Box::new(BinaryLpDesocket::le2())
+        }
+
+        // 4-byte variants (explicit)
+        "binary-lp4" | "lp4" | "binary-lp-4" => Box::new(BinaryLpDesocket::be4()),
+        "binary-lp4-le" | "lp4-le" | "binary-lp-4-le" => Box::new(BinaryLpDesocket::le4()),
+
+        // Everything else stays Null (opaque / custom JSON without LP hint)
         _ => Box::new(NullDesocket::new()),
     }
 }
@@ -94,9 +115,31 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_is_null() {
+    fn resolve_binary_lp() {
         let d = resolve_desocket(Some("binary-lp"));
+        assert!(d.is_enabled());
+        assert_eq!(d.name(), "binary-lp");
+    }
+
+    #[test]
+    fn resolve_binary_lp_le() {
+        let d = resolve_desocket(Some("binary-lp-le"));
+        assert!(d.is_enabled());
+        assert_eq!(d.name(), "binary-lp-le");
+    }
+
+    #[test]
+    fn resolve_lp_alias() {
+        let d = resolve_desocket(Some("lp"));
+        assert!(d.is_enabled());
+        assert_eq!(d.name(), "binary-lp");
+    }
+
+    #[test]
+    fn resolve_unknown_is_null() {
+        let d = resolve_desocket(Some("custom-opaque"));
         assert!(!d.is_enabled());
+        assert_eq!(d.name(), "null");
     }
 
     #[test]
