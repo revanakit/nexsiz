@@ -2,11 +2,13 @@
 //! Author  : Revana
 //! Date    : 08/08/2026
 //!
-//! Phase 1 Snapshot integration:
+//! Snapshot / Desocketing integration (Phases 1–3):
 //!   Engine owns SnapshotProvider. When snapshot=true the provider
 //!   manages target process lifecycle (prepare → take_snapshot →
-//!   restore-on-crash). ProcessMonitor is retained only as a legacy
-//!   fallback when snapshot is disabled.
+//!   restore-on-crash). On successful restore, restore_epoch is
+//!   incremented so all workers force-reconnect (Phase 3 orchestration).
+//!   ProcessMonitor is retained only as a legacy fallback when snapshot
+//!   is disabled.
 
 use crate::common::config::Config;
 use crate::common::error::Result;
@@ -107,7 +109,6 @@ impl Engine {
             fallback_oracle,
         ));
 
-        // Snapshot provider takes ownership of process lifecycle when enabled.
         let mut snapshot = resolve_snapshot(
             cfg.execution.snapshot,
             &cfg.execution.snapshot_backend,
@@ -115,7 +116,6 @@ impl Engine {
             &cfg.output_dir,
         );
 
-        // Legacy ProcessMonitor only when snapshot is off (keeps old behaviour).
         let process_monitor = if !cfg.execution.snapshot {
             if let Some(ref cmd) = cfg.target.target_cmd {
                 match ProcessMonitor::spawn(cmd) {
@@ -132,7 +132,6 @@ impl Engine {
             None
         };
 
-        // Eager prepare + first snapshot when enabled.
         if snapshot.is_enabled() {
             if let Err(e) = snapshot.prepare() {
                 eprintln!("[nexsiz] warning: snapshot prepare failed: {}", e);
@@ -213,6 +212,26 @@ impl Engine {
             mutator_bridge,
             model_name,
         })
+    }
+
+    /// Perform snapshot restore and notify workers via restore_epoch.
+    fn do_restore(&mut self, reason: &str) {
+        self.logger.warn(&format!(
+            "Target process issue ({}); snapshot={} restoring…",
+            reason,
+            self.snapshot.name()
+        ));
+        self.stats.crashes.fetch_add(1, Ordering::Relaxed);
+        match self.snapshot.restore() {
+            Ok(()) => {
+                self.stats.restores.fetch_add(1, Ordering::Relaxed);
+                self.stats.restore_epoch.fetch_add(1, Ordering::Relaxed);
+                self.logger.info("Snapshot restore completed (workers will reconnect)");
+            }
+            Err(e) => {
+                self.logger.warn(&format!("Snapshot restore failed: {}", e));
+            }
+        }
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -346,19 +365,10 @@ impl Engine {
                 }
             }
 
-            // Snapshot path: detect crash → restore
+            // Snapshot path: detect crash → restore + epoch bump
             if self.snapshot.is_enabled() {
                 if self.snapshot.crashed() {
-                    self.logger.warn(&format!(
-                        "Target process crashed (snapshot={}); restoring…",
-                        self.snapshot.name()
-                    ));
-                    self.stats.crashes.fetch_add(1, Ordering::Relaxed);
-                    if let Err(e) = self.snapshot.restore() {
-                        self.logger.warn(&format!("Snapshot restore failed: {}", e));
-                    } else {
-                        self.logger.info("Snapshot restore completed");
-                    }
+                    self.do_restore("process crashed");
                 }
             } else if let Some(ref mon) = self.process_monitor {
                 if mon.crashed() {
@@ -395,7 +405,6 @@ impl Engine {
             mon.terminate();
         }
 
-        // Give the NXS reaper a short window to finish observing late exits.
         if self.cfg.nxs.enabled {
             thread::sleep(Duration::from_millis(800));
         }
@@ -442,19 +451,11 @@ impl Engine {
                 }
             }
 
-            // After a crash observed via the network path, attempt restore
-            // if the snapshot provider is active (covers cases where the
-            // process died but ProcessMonitor/CRIU hasn't noticed yet).
+            // Network-observed crash → attempt restore + epoch bump
             if self.snapshot.is_enabled() {
-                if let Err(e) = self.snapshot.restore() {
-                    self.logger.warn(&format!(
-                        "Post-crash snapshot restore failed: {}",
-                        e
-                    ));
-                }
+                self.do_restore("network-observed crash");
             }
 
-            // NXS: meta + non-blocking spawn + async exit observation
             crate::nxs::on_event(
                 &self.cfg,
                 "crash",
@@ -482,7 +483,6 @@ impl Engine {
         } else if oracle_interesting || result.is_interesting() {
             self.logger.interesting(result);
 
-            // interesting / new_coverage / new_state — only if operator opted in via events
             let event = if result.new_coverage || result.coverage_hits > 0 {
                 "new_coverage"
             } else if result.new_state {
@@ -507,6 +507,8 @@ impl Engine {
         let hangs = self.stats.hangs.load(Ordering::Relaxed);
         let paths = self.stats.new_paths.load(Ordering::Relaxed);
         let states = self.stats.new_states.load(Ordering::Relaxed);
+        let restores = self.stats.restores.load(Ordering::Relaxed);
+        let desockets = self.stats.desockets.load(Ordering::Relaxed);
         let corpus = self.corpus.len();
         let cov_edges = self.coverage.total_edges();
         let eps = if elapsed.as_secs_f64() > 0.0 {
@@ -528,7 +530,7 @@ impl Engine {
         };
 
         self.logger.status(&format!(
-            "[{}] execs: {} ({:.0}/s) | corpus: {} | paths: {} | states: {} | cov_edges: {} | crashes: {} | hangs: {} | nxs_sec: {} | snap: {} | tracker_states: {} | py_oracle: {}/{} | py_proto: {} | py_int: {} | py_enc: {} | py_mut: {}",
+            "[{}] execs: {} ({:.0}/s) | corpus: {} | paths: {} | states: {} | cov_edges: {} | crashes: {} | hangs: {} | restores: {} | desock: {} | nxs_sec: {} | snap: {} | tracker_states: {} | py_oracle: {}/{}",
             format_duration(elapsed),
             execs,
             eps,
@@ -538,31 +540,13 @@ impl Engine {
             cov_edges,
             crashes,
             hangs,
+            restores,
+            desockets,
             nxs_secondary,
             snap,
             self.tracker.state_count(),
             self.oracle_bridge.hits(),
-            self.oracle_bridge.misses(),
-            if self.protocol_bridge.is_active() {
-                self.protocol_bridge.name()
-            } else {
-                "-".into()
-            },
-            if self.integrity_bridge.is_active() {
-                self.integrity_bridge.name()
-            } else {
-                "-".into()
-            },
-            if self.encryptor_bridge.is_active() {
-                self.encryptor_bridge.display_name()
-            } else {
-                "-".into()
-            },
-            if self.mutator_bridge.is_active() {
-                format!("{}", self.mutator_bridge.dictionary_len())
-            } else {
-                "-".into()
-            }
+            self.oracle_bridge.misses()
         ));
     }
 
@@ -592,10 +576,15 @@ impl Engine {
         ));
         if self.snapshot.is_enabled() {
             self.logger.info(&format!(
-                "Snapshot provider: {} (backend={})",
+                "Snapshot provider: {} (backend={}) | restores: {}",
                 self.snapshot.name(),
-                self.cfg.execution.snapshot_backend
+                self.cfg.execution.snapshot_backend,
+                self.stats.restores.load(Ordering::Relaxed)
             ));
+        }
+        let desock = self.stats.desockets.load(Ordering::Relaxed);
+        if desock > 0 {
+            self.logger.info(&format!("Protocol desocket resets: {}", desock));
         }
         if self.cfg.nxs.enabled {
             let sec = crate::nxs::secondary_count();

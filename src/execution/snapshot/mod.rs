@@ -2,17 +2,16 @@
 //! Author  : Revana
 //! Date    : 08/08/2026
 //!
-//! Phase 1: Foundation.
-//!   - SnapshotProvider trait
-//!   - NullSnapshot          (zero cost, default)
-//!   - ProcessRestartSnapshot (kill + respawn via target_cmd)
-//!   - CriuSnapshot          (feature "criu" — shell-out to criu)
+//! Snapshot / Desocketing track (complete):
+//!   Phase 1 – SnapshotProvider trait, Null / ProcessRestart / CRIU backends
+//!   Phase 2 – ProtocolReset desocket + SocketState (see execution/desocket/)
+//!   Phase 3 – restore_epoch orchestration, cost-aware energy, stats
 //!
 //! Design goals:
 //!   - Pure-stdlib default path
 //!   - Zero behaviour change when snapshot is disabled
 //!   - Single ownership of process lifecycle when enabled
-//!   - Extensible for Phase 2 desocketing / Phase 3 cost-aware scheduling
+//!   - Workers observe restore_epoch and force-reconnect after restore
 
 mod null;
 mod process;
@@ -35,7 +34,7 @@ use std::path::PathBuf;
 ///   1. `prepare()`          – spawn / attach, reach initial ready state
 ///   2. `take_snapshot()`    – capture clean state (may be a no-op for ProcessRestart)
 ///   3. … fuzzing …
-///   4. on crash / hang → `restore()` then continue
+///   4. on crash / hang → `restore()` then bump restore_epoch
 ///   5. campaign end   → `terminate()`
 pub trait SnapshotProvider: Send + Sync {
     fn name(&self) -> &str;
@@ -118,7 +117,6 @@ pub fn resolve_snapshot(
                      falling back to process restart. Rebuild with: cargo build --release --features criu"
                 );
             }
-            // fall through to process
             if let Some(cmd) = target_cmd {
                 match ProcessRestartSnapshot::new(cmd) {
                     Ok(s) => Box::new(s),
@@ -135,7 +133,6 @@ pub fn resolve_snapshot(
             }
         }
 
-        // default / "process"
         _ => {
             if let Some(cmd) = target_cmd {
                 match ProcessRestartSnapshot::new(cmd) {

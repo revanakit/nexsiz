@@ -2,16 +2,15 @@
 //! Author  : Revana
 //! Date    : 08/08/2026
 //!
-//! Phase 2: After process snapshot restore (or after deep protocol pollution)
-//! we often need to bring the *protocol* back to a known-good state without
-//! always paying for a full TCP reconnect + handshake.
+//! Snapshot / Desocketing track (complete):
+//!   Phase 2 – ProtocolReset trait, BuiltinDesocket, SocketState
+//!   Phase 3 – restore_epoch coordination with workers, desocket counters,
+//!             cost-aware energy on successful post-desocket interesting cases
 //!
 //! Desocketing here means:
 //!   1. Protocol-aware reset sequences (QUIT / RSET / DISCONNECT / …)
 //!   2. SocketState tracking (clean vs polluted)
-//!   3. Integration point for post-restore and ReusePolicy decisions
-//!
-//! Phase 3 will add cost-aware energy and optional FD-level isolation.
+//!   3. Integration with ReusePolicy and post-snapshot-restore reconnect
 
 mod builtin;
 mod null;
@@ -41,7 +40,6 @@ pub trait ProtocolReset: Send + Sync {
     fn reset(&self, conn: &mut TcpConnector) -> Result<bool>;
 
     /// Optional bytes that can be sent as a “logout / goodbye” before close.
-    /// Used when we are about to drop the connection intentionally.
     fn goodbye(&self) -> Option<&[u8]> {
         None
     }
@@ -58,8 +56,6 @@ pub fn resolve_desocket(model_name: Option<&str>) -> Box<dyn ProtocolReset> {
         "smtp" | "grammar-smtp" | "g-smtp" => Box::new(BuiltinDesocket::smtp()),
         "mqtt" | "grammar-mqtt" | "g-mqtt" => Box::new(BuiltinDesocket::mqtt()),
         "http" | "https" | "grammar-http" | "g-http" => Box::new(BuiltinDesocket::http()),
-        // DNS / SMB / binary protocols rarely benefit from text-level reset
-        // on a live connection; keep null for now.
         _ => Box::new(NullDesocket::new()),
     }
 }
@@ -80,7 +76,6 @@ pub fn reset_or_reconnect(
             conn.connect()
         }
         Err(_) => {
-            // Stream already dead
             conn.close();
             conn.connect()
         }
