@@ -1,4 +1,4 @@
-//! NXS spawn rate limiting and deduplication (Phase 4).
+//! NXS spawn rate limiting and deduplication
 //!
 //! Process-local ledger:
 //! - Per (event, crash_id, nxs_id) cooldown window
