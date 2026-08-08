@@ -172,6 +172,3 @@ Recommended:
 5. Official `nxs/bin/` (relative to install prefix / source tree)
 
 ---
-
-*Nexsiz – precision over noise · depth over breadth · silence until the edge*  
-*NXS – existence after discovery · execute · deepen · exploit-assist*
