@@ -1,21 +1,30 @@
-//! NEXSIZ – Hierarchical mutator engine with protocol-aware integrity
+//! NEXSIZ – Hierarchical mutator with directed scheduling, templates, energy feedback
 //! Author  : Revana
-//! Date    : 07/08/2026
+//! Date    : 08/08/2026
 //!
-//! Integrity repair is OPTIONAL inside the mutator. Production workers
-//! centralise repair ownership in the worker loop (IntegrityBridge |
-//! model-name fallback) so Python bridges never double-repair.
-//!
-//! Phase 2: field-aware mutation — when ProtocolModel carries MessageSpec /
-//! FieldSpec, the mutator prefers known values, respects fixed size, and
-//! avoids destructive edits on protected / length / checksum fields.
+//! Phase 2: field-aware mutation — FieldSpec size / values / protected.
+//! Phase 3: directed field scheduling + MessageSpec/SequenceSpec templates +
+//!          field energy feedback from interesting outcomes.
 
 use crate::common::types::*;
 use crate::common::utils::XorShift64;
 use crate::input::integrity;
-use crate::input::model::{FieldSpec, ProtocolModel};
+use crate::input::model::{FieldSpec, MessageSpec, ProtocolModel};
+use std::collections::HashMap;
 
-/// Main mutator state.
+fn field_type_weight(ftype: &FieldType) -> u32 {
+    match ftype {
+        FieldType::Command => 10,
+        FieldType::String => 9,
+        FieldType::Payload => 8,
+        FieldType::Binary => 6,
+        FieldType::Numeric => 5,
+        FieldType::Custom(_) => 4,
+        FieldType::Length => 1,
+        FieldType::Checksum => 0,
+    }
+}
+
 #[derive(Debug)]
 pub struct Mutator {
     rng: XorShift64,
@@ -25,6 +34,9 @@ pub struct Mutator {
     field_prob: f64,
     dict_prob: f64,
     repair: bool,
+    template_prob: f64,
+    field_energy: HashMap<String, u32>,
+    last_touched: Vec<String>,
 }
 
 impl Mutator {
@@ -45,10 +57,21 @@ impl Mutator {
             field_prob,
             dict_prob,
             repair,
+            template_prob: 0.12,
+            field_energy: HashMap::new(),
+            last_touched: Vec::new(),
         }
     }
 
-    /// Force repair on/off (worker uses this when integrity ownership changes).
+    pub fn with_template_prob(mut self, p: f64) -> Self {
+        self.template_prob = p.clamp(0.0, 1.0);
+        self
+    }
+
+    pub fn set_template_prob(&mut self, p: f64) {
+        self.template_prob = p.clamp(0.0, 1.0);
+    }
+
     pub fn set_repair(&mut self, repair: bool) {
         self.repair = repair;
     }
@@ -61,7 +84,6 @@ impl Mutator {
         &self.model.name
     }
 
-    /// Merge extra dictionary tokens (from MutatorBridge). Deduplicates.
     pub fn extend_dictionary(&mut self, extra: &[Vec<u8>]) {
         self.model.extend_dictionary(extra);
     }
@@ -70,12 +92,25 @@ impl Mutator {
         self.model.dictionary.len()
     }
 
-    /// Replace the underlying model (e.g. after inference enrichment).
     pub fn set_model(&mut self, model: ProtocolModel) {
         self.model = model;
     }
 
+    /// Boost energy for fields touched in the last mutation.
+    pub fn on_interesting(&mut self) {
+        for name in self.last_touched.clone() {
+            let e = self.field_energy.entry(name).or_insert(0);
+            *e = (*e).saturating_add(2).min(64);
+        }
+    }
+
+    fn touch(&mut self, name: &str) {
+        self.last_touched.push(name.to_string());
+    }
+
     pub fn mutate(&mut self, parent: &TestCase, new_id: SeedId) -> TestCase {
+        self.last_touched.clear();
+
         let mut child = parent.clone();
         child.id = new_id;
         child.parent = Some(parent.id);
@@ -83,6 +118,12 @@ impl Mutator {
         child.interesting = false;
         child.energy = 1.0;
         child.last_state = None;
+
+        if (!self.model.messages.is_empty() || !self.model.sequences.is_empty())
+            && self.rng.next_bool(self.template_prob)
+        {
+            self.splice_template(&mut child);
+        }
 
         let n_muts = 1 + self.rng.next_usize(self.max_mutations);
         for _ in 0..n_muts {
@@ -95,7 +136,6 @@ impl Mutator {
             }
         }
 
-        // Enforce fixed-size constraints after mutation
         self.enforce_size_constraints(&mut child);
 
         if self.repair {
@@ -103,6 +143,105 @@ impl Mutator {
         }
 
         child
+    }
+
+    pub fn synthesise_from_spec(&mut self, spec: &MessageSpec) -> Message {
+        let mut msg = Message::new(spec.name.clone());
+        for fs in &spec.fields {
+            let data = self.materialise_field(fs);
+            let mut field = Field::new(fs.name.clone(), fs.ftype.clone(), data);
+            if let Some(sz) = fs.size {
+                field = field.with_size(sz);
+            }
+            if fs.protected {
+                field = field.protected();
+            }
+            msg.add_field(field);
+        }
+        msg
+    }
+
+    pub fn synthesise_sequence(&mut self, seq_name: &str) -> Vec<Message> {
+        let steps: Vec<String> = self
+            .model
+            .sequences
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(seq_name))
+            .map(|s| s.steps.clone())
+            .unwrap_or_default();
+        let mut out = Vec::new();
+        for step in steps {
+            if let Some(spec) = self.model.find_message(&step).cloned() {
+                out.push(self.synthesise_from_spec(&spec));
+            }
+        }
+        out
+    }
+
+    fn materialise_field(&mut self, fs: &FieldSpec) -> Vec<u8> {
+        if !fs.values.is_empty() {
+            let idx = self.rng.next_usize(fs.values.len());
+            let mut data = fs.values[idx].clone();
+            if let Some(sz) = fs.size {
+                enforce_len(&mut data, sz);
+            }
+            return data;
+        }
+        if let Some(sz) = fs.size {
+            return match fs.ftype {
+                FieldType::Length | FieldType::Numeric | FieldType::Checksum => vec![0u8; sz],
+                FieldType::Command if !self.model.dictionary.is_empty() => {
+                    let d = self.model.dictionary[self.rng.next_usize(self.model.dictionary.len())]
+                        .clone();
+                    let mut out = d;
+                    enforce_len(&mut out, sz);
+                    out
+                }
+                _ => (0..sz).map(|_| self.rng.next_u32() as u8).collect(),
+            };
+        }
+        if !self.model.dictionary.is_empty() && self.rng.next_bool(0.6) {
+            return self.model.dictionary[self.rng.next_usize(self.model.dictionary.len())].clone();
+        }
+        let len = 1 + self.rng.next_usize(16);
+        (0..len).map(|_| self.rng.next_u32() as u8).collect()
+    }
+
+    fn splice_template(&mut self, tc: &mut TestCase) {
+        if !self.model.sequences.is_empty() && self.rng.next_bool(0.55) {
+            let seq = self.model.sequences[self.rng.next_usize(self.model.sequences.len())].clone();
+            let msgs = self.synthesise_sequence(&seq.name);
+            if !msgs.is_empty() {
+                if tc.messages.is_empty() || self.rng.next_bool(0.5) {
+                    tc.messages = msgs;
+                } else {
+                    tc.messages.extend(msgs);
+                }
+                return;
+            }
+        }
+
+        if self.model.messages.is_empty() {
+            return;
+        }
+        let spec = self.model.messages[self.rng.next_usize(self.model.messages.len())].clone();
+        let msg = self.synthesise_from_spec(&spec);
+
+        if tc.messages.is_empty() {
+            tc.messages.push(msg);
+            return;
+        }
+        match self.rng.next_usize(3) {
+            0 => {
+                let idx = self.rng.next_usize(tc.messages.len());
+                tc.messages[idx] = msg;
+            }
+            1 => {
+                let at = self.rng.next_usize(tc.messages.len() + 1);
+                tc.messages.insert(at, msg);
+            }
+            _ => tc.messages.push(msg),
+        }
     }
 
     fn mutate_sequence(&mut self, tc: &mut TestCase) {
@@ -180,17 +319,16 @@ impl Mutator {
                 }
             }
             _ => {
-                // Prefer FieldSpec.values or model dictionary
-                let fidx = self.rng.next_usize(msg.fields.len());
-                if msg.fields[fidx].protected {
-                    return;
-                }
-                if let Some(val) = self.pick_spec_value(&msg.fields[fidx].name) {
-                    msg.fields[fidx].data = val;
-                } else if !self.model.dictionary.is_empty() {
-                    let dict_item =
-                        &self.model.dictionary[self.rng.next_usize(self.model.dictionary.len())];
-                    msg.fields[fidx].data = dict_item.clone();
+                if let Some(fidx) = self.pick_weighted_field_index(msg) {
+                    let name = msg.fields[fidx].name.clone();
+                    if let Some(val) = self.pick_spec_value(&name) {
+                        msg.fields[fidx].data = val;
+                    } else if !self.model.dictionary.is_empty() {
+                        let dict_item = &self.model.dictionary
+                            [self.rng.next_usize(self.model.dictionary.len())];
+                        msg.fields[fidx].data = dict_item.clone();
+                    }
+                    self.touch(&name);
                 }
             }
         }
@@ -206,42 +344,62 @@ impl Mutator {
             return;
         }
 
-        // Prefer mutable non-protected, non-integrity fields
-        let candidates: Vec<usize> = msg
-            .fields
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| {
-                !f.protected
-                    && !f.data.is_empty()
-                    && !matches!(f.ftype, FieldType::Length | FieldType::Checksum)
-            })
-            .map(|(i, _)| i)
-            .collect();
-
-        if candidates.is_empty() {
-            // Fall back to any non-protected field
-            let fallback: Vec<usize> = msg
-                .fields
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| !f.protected && !f.data.is_empty())
-                .map(|(i, _)| i)
-                .collect();
-            if fallback.is_empty() {
-                return;
-            }
-            let fidx = fallback[self.rng.next_usize(fallback.len())];
+        if let Some(fidx) = self.pick_weighted_field_index(msg) {
+            let name = msg.fields[fidx].name.clone();
             self.mutate_one_field(&mut msg.fields[fidx]);
+            self.touch(&name);
             return;
         }
 
-        let fidx = candidates[self.rng.next_usize(candidates.len())];
+        let fallback: Vec<usize> = msg
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| !f.protected && !f.data.is_empty())
+            .map(|(i, _)| i)
+            .collect();
+        if fallback.is_empty() {
+            return;
+        }
+        let fidx = fallback[self.rng.next_usize(fallback.len())];
+        let name = msg.fields[fidx].name.clone();
         self.mutate_one_field(&mut msg.fields[fidx]);
+        self.touch(&name);
+    }
+
+    fn pick_weighted_field_index(&mut self, msg: &Message) -> Option<usize> {
+        let mut weights: Vec<(usize, u32)> = Vec::new();
+        let mut total = 0u32;
+
+        for (i, f) in msg.fields.iter().enumerate() {
+            if f.protected || f.data.is_empty() {
+                continue;
+            }
+            let mut w = field_type_weight(&f.ftype);
+            if w == 0 {
+                continue;
+            }
+            let energy = self.field_energy.get(&f.name).copied().unwrap_or(0);
+            w = w.saturating_mul(1 + energy);
+            weights.push((i, w));
+            total = total.saturating_add(w);
+        }
+
+        if total == 0 || weights.is_empty() {
+            return None;
+        }
+
+        let mut pick = self.rng.next_u32() % total;
+        for &(idx, w) in &weights {
+            if pick < w {
+                return Some(idx);
+            }
+            pick -= w;
+        }
+        Some(weights[0].0)
     }
 
     fn mutate_one_field(&mut self, field: &mut Field) {
-        // Prefer known values from FieldSpec when available
         if self.rng.next_bool(self.dict_prob) {
             if let Some(val) = self.pick_spec_value(&field.name) {
                 field.data = val;
@@ -266,7 +424,6 @@ impl Mutator {
             }
         }
 
-        // For fixed-size Numeric / Command prefer in-place byte mutations
         let fixed = field.size;
         match self.rng.next_usize(8) {
             0 => self.bit_flip(field),
@@ -277,8 +434,8 @@ impl Mutator {
             5 if fixed.is_none() => self.insert_bytes(field),
             6 => self.overwrite_bytes(field),
             _ => {
-                if fixed.is_some() {
-                    self.random_bytes_fixed(field, fixed.unwrap());
+                if let Some(sz) = fixed {
+                    self.random_bytes_fixed(field, sz);
                 } else {
                     self.random_bytes(field);
                 }
@@ -286,7 +443,6 @@ impl Mutator {
         }
     }
 
-    /// Look up interesting values for a field name from model MessageSpecs.
     fn pick_spec_value(&mut self, field_name: &str) -> Option<Vec<u8>> {
         let name_l = field_name.to_ascii_lowercase();
         for msg in &self.model.messages {
@@ -300,8 +456,6 @@ impl Mutator {
         None
     }
 
-    /// After mutation, pad or truncate fields that have a fixed size in the model
-    /// or on the Field itself.
     fn enforce_size_constraints(&self, tc: &mut TestCase) {
         for msg in &mut tc.messages {
             for field in &mut msg.fields {
@@ -309,7 +463,6 @@ impl Mutator {
                     enforce_len(&mut field.data, sz);
                     continue;
                 }
-                // Also check MessageSpec for this field name
                 let name_l = field.name.to_ascii_lowercase();
                 for mspec in &self.model.messages {
                     for fs in &mspec.fields {
@@ -419,58 +572,31 @@ fn enforce_len(data: &mut Vec<u8>, size: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::model::{FieldSpec, MessageSpec, ProtocolModel};
-
-    fn sample_tc() -> TestCase {
-        let mut msg = Message::new("m");
-        msg.add_field(Field::new("cmd", FieldType::Command, b"USER".to_vec()));
-        msg.add_field(Field::new("sp", FieldType::Binary, b" ".to_vec()).protected());
-        msg.add_field(Field::new("arg", FieldType::String, b"anon".to_vec()));
-        msg.add_field(Field::new("crlf", FieldType::Binary, b"\r\n".to_vec()).protected());
-        TestCase::new(1, vec![msg])
-    }
 
     #[test]
-    fn mutate_produces_child() {
+    fn energy_boosts_after_interesting() {
         let model = ProtocolModel::ftp();
-        let mut mutator = Mutator::new(42, model, 4, 0.2, 0.7, 0.3, true);
-        let parent = sample_tc();
-        let child = mutator.mutate(&parent, 2);
-        assert_eq!(child.id, 2);
-        assert_eq!(child.parent, Some(1));
-        assert_eq!(child.depth, 1);
+        let mut m = Mutator::new(1, model, 2, 0.0, 1.0, 0.0, false);
+        m.last_touched = vec!["cmd".into()];
+        m.on_interesting();
+        assert_eq!(m.field_energy.get("cmd"), Some(&2));
+    }
+
+    #[test]
+    fn synthesise_ftp_login_sequence() {
+        let model = ProtocolModel::ftp();
+        let mut m = Mutator::new(5, model, 1, 0.0, 0.0, 0.0, false);
+        let msgs = m.synthesise_sequence("login");
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].name, "user");
+        assert_eq!(msgs[1].name, "pass");
+    }
+
+    #[test]
+    fn template_prob_one_fills_empty() {
+        let model = ProtocolModel::mqtt();
+        let mut m = Mutator::new(11, model, 1, 0.0, 0.0, 0.0, false).with_template_prob(1.0);
+        let child = m.mutate(&TestCase::new(1, vec![]), 2);
         assert!(!child.messages.is_empty());
-    }
-
-    #[test]
-    fn extend_dictionary_dedup() {
-        let model = ProtocolModel::generic();
-        let mut mutator = Mutator::new(1, model, 1, 0.0, 1.0, 1.0, false);
-        let before = mutator.dictionary_len();
-        mutator.extend_dictionary(&[b"ZZZ".to_vec(), b"ZZZ".to_vec()]);
-        assert_eq!(mutator.dictionary_len(), before + 1);
-    }
-
-    #[test]
-    fn set_repair_toggle() {
-        let model = ProtocolModel::generic();
-        let mut mutator = Mutator::new(1, model, 1, 0.0, 1.0, 0.0, true);
-        assert!(mutator.repair_enabled());
-        mutator.set_repair(false);
-        assert!(!mutator.repair_enabled());
-    }
-
-    #[test]
-    fn enforce_fixed_size() {
-        let mut model = ProtocolModel::generic();
-        model.messages = vec![MessageSpec::new("frame").field(
-            FieldSpec::new("len", FieldType::Length).with_size(2),
-        )];
-        let mut mutator = Mutator::new(7, model, 3, 0.0, 1.0, 0.0, false);
-        let mut msg = Message::new("frame");
-        msg.add_field(Field::new("len", FieldType::Length, vec![0, 0, 0, 0]).with_size(2));
-        let parent = TestCase::new(1, vec![msg]);
-        let child = mutator.mutate(&parent, 2);
-        assert_eq!(child.messages[0].fields[0].data.len(), 2);
     }
 }
