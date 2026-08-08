@@ -9,13 +9,15 @@
 //!   3. else none
 //! Mutator internal repair is always OFF in production workers.
 //!
-//! Phase 3: template_prob from MutatorConfig; on_interesting() field energy.
+//! Phase 3 template_prob / on_interesting field energy.
+//! Phase 2 desocket: ProtocolReset + SocketState via ReusePolicy.
 
 use crate::common::config::Config;
 use crate::common::types::*;
 use crate::common::utils::XorShift64;
 use crate::coverage::CoverageProvider;
 use crate::execution::connector::{execute_tcp, execute_udp, TcpConnector, UdpConnector};
+use crate::execution::desocket::{resolve_desocket, reset_or_reconnect, ProtocolReset};
 use crate::execution::reuse::ReusePolicy;
 use crate::input::corpus::SharedCorpus;
 use crate::input::integrity;
@@ -158,6 +160,9 @@ fn worker_main(
     )
     .with_template_prob(mutator_cfg.template_prob);
 
+    // Phase 2: protocol-aware desocket provider
+    let desocket: Box<dyn ProtocolReset> = resolve_desocket(Some(&model_name));
+
     let mut fallback_encryptor: Box<dyn Encryptor> =
         resolve_encryptor_with_key(encryptor_name.as_deref(), enc_key.as_deref());
     let mut cached_bridge_enc_name: Option<String> = None;
@@ -221,7 +226,38 @@ fn worker_main(
 
         coverage.reset();
 
-        let do_reuse = !is_udp && exec_cfg.connection_reuse && reuse.should_reuse();
+        // --- Connection decision (Phase 2 desocket-aware) ---
+        let do_reuse = if is_udp {
+            false
+        } else if !exec_cfg.connection_reuse {
+            false
+        } else if reuse.should_reuse() {
+            true
+        } else if reuse.needs_desocket() && desocket.is_enabled() {
+            // Try protocol-level reset before full reconnect
+            match reset_or_reconnect(desocket.as_ref(), &mut tcp_connector) {
+                Ok(()) => {
+                    if tcp_connector.is_connected() {
+                        // If reset kept the connection, mark clean
+                        if desocket.is_enabled() {
+                            // reset_or_reconnect may have reconnected; check
+                            reuse.on_desocket_ok();
+                        }
+                        true
+                    } else {
+                        reuse.on_desocket_fallback();
+                        false
+                    }
+                }
+                Err(_) => {
+                    reuse.on_desocket_fallback();
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
         if !is_udp && !do_reuse {
             reuse.on_reconnect();
             let _ = tcp_connector.connect();

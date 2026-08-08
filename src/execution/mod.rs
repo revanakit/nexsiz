@@ -8,6 +8,7 @@ pub mod worker;
 pub mod engine;
 pub mod process_monitor;
 pub mod snapshot;
+pub mod desocket;
 
 #[cfg(feature = "libafl")]
 pub mod libafl_exec;
