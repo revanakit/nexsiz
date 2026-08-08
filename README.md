@@ -17,6 +17,27 @@ Design priorities are explicit: precision over volume, structural integrity afte
 
 ---
 
+## Current Status
+
+| Item | Value |
+|------|-------|
+| Version | `0.1.0` |
+| Maturity | Operational / experimental |
+| Primary platform | Linux (x86_64) |
+| Default dependencies | `libc` only |
+| Optional features | `libafl`, `json-model`, `criu` |
+| License | Apache-2.0 |
+
+**Known limitations (v0.1.0)**
+- Frida / shared-memory coverage and CRIU snapshot are Linux-only.
+- Snapshot restore is Phase-1 (process kill+respawn or CRIU); full desocketing is ongoing.
+- Webhook NXS uses a pure-stdlib HTTP client (no HTTPS); terminate TLS at a local proxy if needed.
+- Rate limits and cooldowns are conservative by default — tune for your environment.
+
+Always run against isolated targets under explicit authorisation.
+
+---
+
 ## Design Principles
 
 | Principle | Implementation |
@@ -201,6 +222,9 @@ cd nxs && ./build.sh && cd ..
 
 # Deep campaign (intrusive NXS set)
 ./target/release/nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs intrusive --nxs-cooldown 60 -v
+
+# Local target + process snapshot (kill+respawn)
+./target/release/nexsiz -t "./mydaemon" -Z --snapshot-backend process -m ftp -v
 ```
 
 ---
@@ -218,14 +242,14 @@ nexsiz [OPTIONS]
 | `-h`, `--host <ADDR>` | Target host | `127.0.0.1` |
 | `-p`, `--port <PORT>` | Target port | `80` |
 | `-P`, `--proto <PROTO>` | Transport protocol: `tcp` \| `udp` | `tcp` |
-| `-t`, `--cmd <CMD>` | Spawn target process for local crash monitoring | — |
+| `-t`, `--cmd <CMD>` | Spawn target process for local crash monitoring / snapshot | — |
 | `-T`, `--timeout <MS>` | Per-operation timeout (milliseconds) | `500` |
 
 ### Protocol & Plugins
 
 | Flag | Description |
 |------|-------------|
-| `-m`, `--model <NAME>` | Protocol model: `ftp` \| `smtp` \| `http` \| `generic` \| `dns` \| `mqtt` \| `smb` \| `binary-lp` \| path/to/model.json |
+| `-m`, `--model <NAME>` | Protocol model: `ftp` \| `smtp` \| `http` \| `generic` \| `dns` \| `mqtt` \| `smb` \| `binary-lp` \| `binary-lp-le` \| path/to/model.json |
 | `-O`, `--oracle <NAME>` | Oracle: `default` \| `strict` \| `crash` \| `hang` \| `coverage` \| `differential` \| `sanitizer` \| `diffsan` \| `expanded` |
 | `-i`, `--int <NAME>` | Integrity strategy: `default` \| `http` \| `ftp` \| `smtp` \| `binary` \| `binary-le` \| `null` |
 | `-e`, `--enc <NAME>` | Encryptor: `null` \| `xor` \| `chacha20` \| `tls-record` \| `chacha20+tls` \| `xor+tls` |
@@ -270,6 +294,17 @@ Environment: `NEXSIZ_SHM_ID`.
 | `-L`, `--libafl` | Use LibAFL path (requires `--features libafl`) | native path |
 
 Environment: `NEXSIZ_RPC_SOCK` (same as `-Y`).
+
+### Snapshot / Process Management
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-Z`, `--snapshot` | Enable process snapshot / restore | disabled |
+| `--snapshot-backend <B>` | Backend: `null` \| `process` \| `criu` | `process` (when `-Z` is set) |
+
+- `process` — kill + respawn the target on crash (requires `-t/--cmd`).
+- `criu` — CRIU dump/restore (requires `--features criu` and `criu` on `PATH`).
+- Snapshot implies local process control; combine with `-t`.
 
 ### Execution Limits
 
@@ -324,6 +359,8 @@ nexsiz -h 10.0.0.5 -p 445 -m smb -v
 nexsiz --infer-model -s seeds/ftp -v
 nexsiz --infer-model -s seeds/custom --infer-out models/inferred.json
 nexsiz -h 10.0.0.5 -p 1234 -m models/custom-example.json -v   # needs --features json-model
+nexsiz -t "./target_daemon" -Z --snapshot-backend process -m ftp -v
+nexsiz -t "./target_daemon" -Z --snapshot-backend criu -m ftp -v   # needs --features criu
 ```
 
 ---
@@ -342,13 +379,22 @@ output/
 
 ---
 
-## License
+## Operational Notes
 
-Apache License 2.0. Intended for operational use by offensive security teams.
+- Clean residual shared-memory maps after campaigns: `rm -f /dev/shm/nexsiz-cov*`.
+- Prefer `-C software` when the target is remote-only (no local process for Frida).
+- NXS spawns are non-blocking; the background reaper observes exit codes asynchronously.
+- Exit code 2 from any NXS is treated as a secondary finding and recorded in `nxs-findings/secondary.jsonl`.
 
 ---
 
-## nexsiz document
+## License
+
+Apache License 2.0. Intended for operational use by offensive security teams under explicit authorisation and in isolated environments.
+
+---
+
+## Documentation
 
 [![x](https://img.shields.io/badge/nexsiz--blogs-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
 
