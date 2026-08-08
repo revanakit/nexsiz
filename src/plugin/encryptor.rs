@@ -2,19 +2,63 @@
 //!
 //! Author  : Revana
 //! Date    : 08/08/2026
-//! Files   : nexsiz/src/plugin/encryptor.rs
+//! Module  : nexsiz/src/plugin/encryptor.rs
 //!
-//! NEXSIZ – Encryptor plugins (Production TLS record + custom crypto)
+//! # Encryptor Plugin Layer
 //!
-//! Applied after integrity repair, before the test case is sent on the wire.
-//! All implementations are pure Rust / zero extra dependencies.
+//! Provides stateful encryption and framing transformations applied post-integrity-repair
+//! in the fuzzing pipeline, immediately before wire transmission. Implements RFC-compliant
+//! cryptographic primitives (ChaCha20/RFC 8439, Poly1305) with zero external dependencies.
 //!
-//! Production-ready features:
-//!   - ChaCha20 with proper counter control
-//!   - ChaCha20-Poly1305 AEAD
-//!   - Full TLS record types + fragmentation
-//!   - Nonce modes (fixed / incrementing / random)
-//!   - Composition pipelines
+//! ## Architecture
+//!
+//! All encryptors implement the `Encryptor` trait, enabling bidirectional transformation:
+//! - `encrypt()`: applies payload obfuscation and/or framing to test cases
+//! - `decrypt_response()`: optional response de-framing for symmetric analysis
+//!
+//! ## Implementations
+//!
+//! **Symmetric Stream Ciphers:**
+//! - `NullEncryptor`: identity transform (baseline/control)
+//! - `XorEncryptor`: rolling XOR with configurable key material
+//! - `ChaCha20Encryptor`: RFC 8439 stream cipher with per-message counter reset
+//!
+//! **Authenticated Encryption (AEAD):**
+//! - `ChaCha20Poly1305Encryptor`: ChaCha20-Poly1305 with optional AAD support
+//!   Output format: ciphertext || 16-byte authentication tag
+//!
+//! **Protocol Framing:**
+//! - `TlsRecordEncryptor`: RFC 5246/8446 record layer with configurable:
+//!   - Content type (ChangeCipherSpec, Alert, Handshake, ApplicationData)
+//!   - Protocol version (TLS 1.0–1.3)
+//!   - Automatic fragmentation when payload exceeds 16KB max record size
+//!   - Graceful multi-record payload reassembly during decryption
+//!
+//! **Composition Pipelines:**
+//! - `ChaCha20ThenTlsEncryptor`: stream encryption → record framing
+//! - `ChaCha20Poly1305ThenTlsEncryptor`: AEAD → record framing
+//! - `XorThenTlsEncryptor`: XOR → record framing
+//!
+//! ## Nonce & Counter Management
+//!
+//! - **NonceMode::Fixed**: static nonce (deterministic, reproducible fuzzing)
+//! - **NonceMode::Incrementing**: monotonic increment per message (stream position tracking)
+//! - **NonceMode::Random**: cryptographically random per message (high entropy scenarios)
+//! - **Counter Reset**: ChaCha20 counter resets to 0 per message (recommended for state fuzzing)
+//!
+//! ## Configuration
+//!
+//! Encryptors resolved via `resolve_encryptor()` or `resolve_encryptor_with_key()`:
+//! - Environment variables: `NEXSIZ_ENC_KEY`, `NEXSIZ_ENC_NONCE`, `NEXSIZ_NONCE_MODE`
+//! - Key/nonce parsing: hex string (e.g., "0x01020304") or raw bytes
+//! - Fallback: hardcoded defaults from `crypto::default_key()` / `crypto::default_nonce()`
+//!
+//! ## Production Guarantees
+//!
+//! - Pure Rust implementation (no FFI, no external crypto libraries)
+//! - Constant-time operations for tag verification (Poly1305)
+//! - RFC compliance for record layer fragmentation and TLS versioning
+//! - Comprehensive fuzzing-oriented test coverage (roundtrip, fragmentation, multi-record)
 
 use crate::common::types::{Field, FieldType, TestCase};
 use crate::plugin::crypto::{
