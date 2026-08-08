@@ -1,7 +1,11 @@
-//! NEXSIZ – Expanded Differential & Sanitizer Oracle plugins (production-ready)
-//! Author  : Revana
-//! Date    : 05/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
+//! Author  : Revana
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/oracle.rs
+//!
+//! NEXSIZ – Expanded Differential & Sanitizer Oracle plugins (production-ready)
+//! 
 //! Production-grade interestingness oracles for red-team / APT fuzzing campaigns.
 //!
 //! ## Differential family
