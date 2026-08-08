@@ -1,6 +1,10 @@
-//! NEXSIZ – Encryptor plugins (Production TLS record + custom crypto)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/encryptor.rs
+//!
+//! NEXSIZ – Encryptor plugins (Production TLS record + custom crypto)
 //!
 //! Applied after integrity repair, before the test case is sent on the wire.
 //! All implementations are pure Rust / zero extra dependencies.
