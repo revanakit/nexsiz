@@ -1,6 +1,10 @@
-//! NEXSIZ – Pure-Rust cryptographic primitives for Encryptor plugins
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 08/08/2026
+//! Files   : nexsiz/src/plugin/crypto.rs
+//!
+//! NEXSIZ – Pure-Rust cryptographic primitives for Encryptor plugins
 //!
 //! Production-ready, dependency-free implementations for offensive protocol
 //! fuzzing. Determinism, reproducibility, and operational control first.
