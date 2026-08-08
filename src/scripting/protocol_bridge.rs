@@ -14,7 +14,7 @@
 //! Live mid-campaign worker swap is a documented v1 limitation – re-register
 //! before starting the campaign, or restart workers in a future iteration.
 
-use crate::input::model::ProtocolModel;
+use crate::input::model::{ModelChecksum, ModelEndian, ProtocolModel};
 use crate::plugin::protocol::ProtocolPlugin;
 use crate::scripting::json::JsonValue;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -211,6 +211,12 @@ pub fn model_from_params(params: &JsonValue) -> Result<ProtocolModel, String> {
         dictionary,
         length_prefixed,
         delimiter,
+        endian: ModelEndian::Big,
+        checksum: ModelChecksum::Auto,
+        messages: Vec::new(),
+        length_width: None,
+        sequences: Vec::new(),
+        desocket: None,
     })
 }
 
