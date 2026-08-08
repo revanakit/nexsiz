@@ -1,13 +1,15 @@
 //! NEXSIZ – Worker threads with rarity-guided energy, encryptor pipeline
 //! grey-box coverage, single repair ownership, MutatorBridge dict merge
 //! Author  : Revana
-//! Date    : 06/08/2026
+//! Date    : 08/08/2026
 //!
 //! Repair ownership (exactly one stage, live-safe):
 //!   1. IntegrityBridge active  → bridge.repairer().prepare_for_send()
 //!   2. else cfg.repair_integrity → integrity::prepare_for_send(model_name)
 //!   3. else none
 //! Mutator internal repair is always OFF in production workers.
+//!
+//! Phase 3: template_prob from MutatorConfig; on_interesting() field energy.
 
 use crate::common::config::Config;
 use crate::common::types::*;
@@ -145,8 +147,6 @@ fn worker_main(
     let model_name = model.name.clone();
     let cfg_repair = mutator_cfg.repair_integrity;
 
-    // Mutator NEVER owns repair in production workers – worker applies
-    // exactly one repair stage after mutate (see apply_integrity below).
     let mut mutator = Mutator::new(
         rng_seed ^ 0xdeadbeef,
         model,
@@ -154,8 +154,9 @@ fn worker_main(
         mutator_cfg.hierarchical_prob,
         mutator_cfg.field_prob,
         mutator_cfg.dict_prob,
-        false, // repair always off here
-    );
+        false,
+    )
+    .with_template_prob(mutator_cfg.template_prob);
 
     let mut fallback_encryptor: Box<dyn Encryptor> =
         resolve_encryptor_with_key(encryptor_name.as_deref(), enc_key.as_deref());
@@ -174,7 +175,6 @@ fn worker_main(
     let mut prev_state: Option<u64> = None;
 
     while !stop.load(Ordering::Relaxed) {
-        // Live MutatorBridge dictionary merge
         let gen = mutator_bridge.generation();
         if gen != last_mutator_gen {
             last_mutator_gen = gen;
@@ -195,7 +195,6 @@ fn worker_main(
         let child_id = corpus.next_id();
         let mut child = mutator.mutate(&parent, child_id);
 
-        // ── Single repair owner (live-safe) ──────────────────────────────
         apply_integrity(
             &mut child,
             &integrity_bridge,
@@ -205,7 +204,6 @@ fn worker_main(
             &model_name,
         );
 
-        // Live encryptor bridge
         if encryptor_bridge.is_active() {
             let name = encryptor_bridge.encryptor_name();
             if name != cached_bridge_enc_name {
@@ -272,6 +270,10 @@ fn worker_main(
         }
         prev_state = Some(result.state_hash);
 
+        if result.is_interesting() {
+            mutator.on_interesting();
+        }
+
         stats.execs.fetch_add(1, Ordering::Relaxed);
         if result.crash {
             stats.crashes.fetch_add(1, Ordering::Relaxed);
@@ -305,7 +307,6 @@ fn worker_main(
     }
 }
 
-/// Exactly one repair path. Live-safe against mid-campaign register_integrity.
 fn apply_integrity(
     child: &mut TestCase,
     integrity_bridge: &IntegrityBridge,
@@ -325,7 +326,6 @@ fn apply_integrity(
         }
         return;
     }
-    // Bridge inactive – clear cache so a later re-register re-resolves
     if cached_strategy.is_some() {
         *cached_strategy = None;
         *bridge_repairer = None;

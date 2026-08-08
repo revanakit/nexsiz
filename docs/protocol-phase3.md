@@ -1,7 +1,6 @@
-# Protocol Expansion Track — Complete
+# Protocol Expansion Track — Complete (on main)
 
-**Branch:** `feature/protocol-phase3-v2`  
-**Date:** 2026-08-07
+**Date:** 2026-08-08
 
 ## Scope closed
 
@@ -9,10 +8,10 @@
 |---------|--------|
 | Phase 1 built-ins + JSON models | on main |
 | Phase 2 `--infer-model` + field-aware mutation | on main |
-| Phase 3 directed scheduling + templates | this PR |
-| Field energy feedback | done |
-| `template_prob=` config | done |
-| Sequence templates | done |
+| Phase 3 directed scheduling + templates | on main |
+| Field energy feedback | on main |
+| `template_prob=` config | on main |
+| Sequence templates | on main |
 
 ## Field energy feedback
 
@@ -38,3 +37,9 @@ max_mutations=8
 | `mqtt` | `connect-publish` |
 
 API: `Mutator::synthesise_sequence("login")`
+
+## Operational notes
+
+- Models without `messages` / `sequences` → Phase 2 behaviour unchanged
+- Integrity repair remains single-owner in the worker
+- Energy is per-worker (local HashMap)
