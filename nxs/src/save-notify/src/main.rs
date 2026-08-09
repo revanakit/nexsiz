@@ -1,4 +1,4 @@
-//! nxs-save-notify — official existence script
+//! nxs-save-notify — official nexsiz existence script
 //!
 //! Contract id: crash/save-notify
 //! Purpose    : Persist crash / hang artefacts into a stable archive tree and
