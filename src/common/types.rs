@@ -2,7 +2,7 @@
 //!
 //! Author  : Revana
 //! Date    : 09/08/2026
-//! Files   : nexsiz/src/common/types.rs
+//! Module  : nexsiz::src::common::types
 //!
 //! NEXSIZ — NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
