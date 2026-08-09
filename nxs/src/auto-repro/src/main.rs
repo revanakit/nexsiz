@@ -1,4 +1,4 @@
-//! nxs-auto-repro — official existence script
+//! nxs-auto-repro — official nexsiz existence script
 //!
 //! Contract id: crash/auto-repro
 //! Purpose    : Deterministic replay of a discovered crash / hang input
