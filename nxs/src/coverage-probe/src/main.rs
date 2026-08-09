@@ -1,4 +1,4 @@
-//! nxs-coverage-probe — official existence script
+//! nxs-coverage-probe — official nexsiz existence script
 //!
 //! Contract id: crash/coverage-probe
 //! Purpose    : After a crash, exercise the input and a bounded set of
