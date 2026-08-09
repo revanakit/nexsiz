@@ -1,4 +1,8 @@
-//! NEXSIZ — Stateful Network Protocol Fuzzer (next-generation)
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Author  : Revana
+//! Date    : 09/08/2026
+//! Module  : nexsiz::src::main
 //!
 //! Short description:
 //!   Entry point for Nexsiz. Implements a compact, dependency-free CLI
@@ -37,14 +41,6 @@
 //!   - Human-friendly banners, summaries (e.g., model inference), and detailed
 //!     error messages printed to stdout/stderr as appropriate.
 //!   - Non-zero process exit on configuration, initialization, or runtime errors.
-//!
-//! Author: Revana
-//! Date  : 09/08/2026
-//! Path  : nexsiz/src/main.rs
-//! Version: see crate VERSION constant
-//!
-//! See README and the repository documentation for full operational examples
-//! and feature-specific build instructions.
 
 use nexsiz::common::config::Config;
 use nexsiz::common::error::{NexsizError, Result};
