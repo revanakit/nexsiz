@@ -1,4 +1,4 @@
-//! nxs-state-diff — official existence script
+//! nxs-state-diff — official nexsiz existence script
 //!
 //! Contract id: crash/state-diff
 //! Purpose    : Multi-shot replay of a crash input; compare behavioural
