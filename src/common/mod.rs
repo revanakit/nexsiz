@@ -2,8 +2,8 @@
 //!
 //! Author  : Revana
 //! Date    : 07/08/2026
-//! Files   : nexsiz/src/common/mod.rs
-//!
+//! Module  : nexsiz::src::common::mod
+
 pub mod config;
 pub mod error;
 pub mod types;
