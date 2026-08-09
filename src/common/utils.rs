@@ -2,7 +2,7 @@
 //!
 //! Author  : Revana
 //! Date    : 09/08/2026
-//! Files   : nexsiz/src/common/utils.rs
+//! Module  : nexsiz::src::common::utils
 //! 
 //! Module purpose
 //! - Collection of lightweight utilities used across the codebase: a small deterministic PRNG,
