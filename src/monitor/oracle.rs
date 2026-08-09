@@ -2,9 +2,40 @@
 //! Author  : Revana
 //! Date    : 05/08/2026
 //!
-//! Base oracles used by the plugin layer. Additional differential and
-//! sanitizer oracles live in `src/plugin/oracle.rs` and are composed here
-//! or selected by name.
+//! NEXSIZ — Oracle core: interestingness decision logic
+//!
+//! Module responsibilities:
+//! - Define the `Oracle` trait used to decide whether an `ExecutionResult`
+//!   produced by the execution engine is "interesting" for further analysis,
+//!   triage, or corpus minimization.
+//! - Provide a set of primitive oracles (Crash, Hang, Coverage, Error) and
+//!   a composable `CompositeOracle` to combine multiple criteria.
+//!
+//! Key guarantees and expectations:
+//! - Implementations of `Oracle` must be thread-safe (`Send + Sync`) because
+//!   oracles can be evaluated concurrently by the fuzzing/monitoring runtime.
+//! - Oracle decisions should be deterministic for a given `ExecutionResult`;
+//!   avoid internal mutable state unless externally synchronized.
+//! - Keep `is_interesting` evaluations fast and non-blocking — avoid I/O or
+//!   expensive computations inside hot paths to prevent runtime stalls.
+//!
+//! Public API summary:
+//! - trait Oracle { fn name(&self) -> &str; fn is_interesting(&self, result: &ExecutionResult) -> bool; }
+//! - Primitives: `CrashOracle`, `HangOracle`, `CoverageOracle`, `ErrorOracle`.
+//! - `CompositeOracle` supports composition, a `default_set()` matching the
+//!   classical crash+hang+coverage policy, and exposes `evaluate()` for callers.
+//!
+//! Extensibility:
+//! - Additional differential and sanitizer-specific oracles live in
+//!   `src/plugin/oracle.rs`. Those implementations are intended to be composed
+//!   or selected at runtime by name.
+//!
+//! Implementation notes:
+//! - This module relies on fields and the `OutcomeClass` variants from
+//!   `crate::common::types::ExecutionResult`. Ensure that those semantics are
+//!   preserved when modifying `ExecutionResult` or `OutcomeClass`.
+//! - When adding new oracles, prefer pure functions over side effects so the
+//!   composition remains predictable and testable.
 
 use crate::common::types::ExecutionResult;
 
