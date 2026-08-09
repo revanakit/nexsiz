@@ -1,4 +1,4 @@
-//! nxs-differential-probe — official existence script
+//! nxs-differential-probe — official nexsiz existence script
 //!
 //! Contract id: crash/differential-probe
 //! Purpose    : After a crash is discovered, run a *bounded* set of controlled
