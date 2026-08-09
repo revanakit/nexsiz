@@ -1,4 +1,4 @@
-//! nxs-notify-webhook — official existence script
+//! nxs-notify-webhook — official nexsiz existence script
 //!
 //! Contract id: external/notify-webhook
 //! Purpose    : Deliver a compact JSON notification to an external HTTP(S)
