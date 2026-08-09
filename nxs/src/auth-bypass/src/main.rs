@@ -1,4 +1,4 @@
-//! nxs-auth-bypass — official existence script
+//! nxs-auth-bypass — official nexsiz existence script 
 //!
 //! Contract id: crash/auth-bypass
 //! Purpose    : Protocol-aware authentication sequence injection after a
