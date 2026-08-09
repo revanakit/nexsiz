@@ -1,7 +1,48 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //! Author  : Revana
 //! Date    : 04/08/2026
-//! Test-case minimizer with real re-execution.
+//! # Test Case Minimizer Module
+//!
+//! Provides delta-debugging capabilities for reducing crashing or interesting test cases
+//! to their minimal reproducible form through iterative re-execution and feedback.
+//!
+//! ## Purpose
+//! This module implements a multi-stage minimization strategy designed to identify the
+//! smallest subset of messages and fields within a test case that reproduces the original
+//! execution outcome (crash, hang, or error state). Minimization is essential for:
+//! - Reducing test case complexity for analysis
+//! - Enabling faster reproduction and root-cause identification
+//! - Generating concise bug reports with minimal noise
+//!
+//! ## Algorithm Overview
+//! The minimization process operates in four sequential stages:
+//!
+//! 1. **Message Removal (Tail)**: Iteratively removes messages from the end until
+//!    no further reduction maintains the crash/hang condition.
+//!
+//! 2. **Message Removal (Head)**: Iteratively removes messages from the beginning,
+//!    allowing earlier messages to be pruned while preserving state.
+//!
+//! 3. **Field Data Truncation**: For Binary and Payload field types, performs binary
+//!    search-like reduction by halving field data size until a minimum threshold (16 bytes)
+//!    is reached.
+//!
+//! 4. **Protected Field Removal**: Removes non-protected fields from messages in reverse
+//!    order, respecting the `protected` flag on individual fields to preserve critical
+//!    protocol elements.
+//!
+//! ## Performance Considerations
+//! - Each candidate mutation triggers a full re-execution callback
+//! - Early termination occurs when a mutation no longer reproduces the interesting behavior
+//! - Metadata (depth, parent, id) is preserved from the original test case
+//!
+//! ## Usage Example
+//! 
+//! let minimized = minimize(
+//!     &original_test_case,
+//!     &original_execution_result,
+//!     |tc| executor.run(tc), // Re-execution callback
+//! )?;
 
 use crate::common::error::Result;
 use crate::common::types::*;
