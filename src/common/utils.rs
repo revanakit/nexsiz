@@ -1,10 +1,33 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 07/08/2026
+//! Date    : 09/08/2026
 //! Files   : nexsiz/src/common/utils.rs
+//! 
+//! Module purpose
+//! - Collection of lightweight utilities used across the codebase: a small deterministic PRNG,
+//!   fast non-cryptographic hashing, time helpers, and byte formatting/manipulation helpers.
 //!
-//! Utility functions: RNG, hashing, time helpers, byte manipulation.
+//! Public responsibilities
+//! - XorShift64: a compact, deterministic xorshift64* PRNG intended for reproducible experiments,
+//!   fuzz scheduling and non-cryptographic randomness. NOT suitable for cryptographic uses.
+//! - hash_bytes / hash_combine: fast, non-cryptographic hashing for coverage and state-tracking.
+//! - Timer / format_duration: simple wall-clock timing and human-friendly duration formatting for logs.
+//! - hex_encode / truncate_bytes: concise byte buffer formatting for debug/log output.
+//! - clamp: generic utility to constrain values to a given range.
+//!
+//! Design notes & guarantees
+//! - Performance: implemented for low latency and minimal allocations — safe to call frequently in hot loops.
+//! - Determinism: XorShift64 yields reproducible sequences when initialized with the same seed.
+//! - Threading: XorShift64 stores internal state and is not thread-safe by itself; clone per-thread if needed.
+//! - Hash stability: DefaultHasher (std) is used for speed. Hash values are intended for internal
+//!   coverage/state-tracking and may vary across std versions/targets — do not rely on cross-platform stability.
+//!
+//! Usage guidance
+//! - For reproducible fuzz runs, create XorShift64 with a fixed seed. Use from_entropy() only for non-deterministic runs.
+//! - For security-sensitive randomness or cryptographic purposes, use a dedicated cryptographic RNG from a vetted crate.
+//! - Use hash_bytes for quick buffer summaries in coverage/state logic; use a stronger/fixed algorithm when long-term
+//!   fingerprint stability is required.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
