@@ -2,7 +2,7 @@
 //!
 //! Author  : Revana
 //! Date    : 07/08/2026
-//! Files   : nexsiz/src/lib.rs
+//! Module  : nexsiz::src::lib
 //!
 //! Architecture follows the four-layer design:
 //!   1. Input Construction Layer   - semantic token sequences + hierarchical mutators
