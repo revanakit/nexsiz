@@ -1,18 +1,49 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
-//!
 //! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/coverage/map.rs
+//! Date    : 2026-08-09
+//! Module  : nexsiz::coverage::map
 //!
-//! 64 KiB edge map with hit-count buckets.
+//! High-performance edge coverage tracking system with hybrid feedback support.
 //!
-//! Modes:
-//!   1. In-process only (default when SHM unavailable)
-//!   2. POSIX SHM (Linux) — external agents (Frida, LD_PRELOAD) write the
-//!      same layout; Nexsiz resets & collects it each execution.
+//! Overview
+//! Provides a 64 KiB edge map with per-edge hit-count buckets for tracking code execution
+//! paths during fuzzing. Supports both in-process and POSIX shared-memory (SHM) modes for
+//! seamless integration with external instrumentation agents (e.g., Frida, LD_PRELOAD).
 //!
-//! Response-derived synthetic edges are always merged so remote/uninstrumented
-//! targets still produce hybrid feedback.
+//! Architecture
+//!
+//! Execution Modes
+//! - In-Process Mode (default): Standalone edge tracking when SHM is unavailable.
+//!   Suitable for statically instrumented targets or when external agents are not needed.
+//!
+//! - POSIX SHM Mode (Linux): Attaches to a shared-memory region written by external
+//!   instrumentation agents. Provides unified feedback by merging remote hits with local
+//!   synthetic edges on each collection cycle.
+//!
+//! Feedback Generation
+//! - SHM Synchronization: External agent hits are pulled into the in-process map at
+//!   collection time. Max semantics preserve synthetic response edges.
+//!
+//! - Synthetic Response Edges: Always injected (hybrid mode). Edges are derived from:
+//!   - Response status code chains (sequential hashing)
+//!   - Response body fingerprints (first 32 bytes)
+//!   - Execution outcome classification (5 distinct outcome classes)
+//!
+//! - Virgin Map Tracking: Maintains persistent record of all edges ever observed.
+//!   First hit increments the unique edge counter; subsequent hits reuse virgin entry.
+//!
+//! Performance Notes
+//! - All bucket updates use `Ordering::Relaxed` atomics (single-threaded collection model).
+//! - SHM snapshot is taken once per collection; edge injection happens after.
+//! - Map hash is computed incrementally during virgin map scan for compact representation.
+//!
+//! Data Flow
+//!
+//! Reset → [SHM Clear + In-Process Clear]
+//!   ↓
+//! Execution → [External Agent writes to SHM]
+//!   ↓
+//! Collect → Pull SHM → Inject Response Edges → Scan Virgin → Return Feedback
 
 use crate::common::types::ExecutionResult;
 use crate::common::utils::{hash_bytes, hash_combine};
