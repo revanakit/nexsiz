@@ -4,7 +4,23 @@
 //! Date    : 08/08/2026
 //! Files   : nexsiz/src/common/config.rs
 //!
-//! Configuration management for Nexsiz.
+//! NEXSIZ Configuration Module
+//!
+//! Provides comprehensive configuration management for the NEXSIZ stateful network protocol fuzzer.
+//! This module handles loading, parsing, and validation of configuration parameters from file-based
+//! sources and applies sensible defaults for all fuzzing subsystems.
+//!
+//! Responsibilities
+//! - Target Configuration: Network endpoint settings (host, port, protocol, timeout)
+//! - Mutator Configuration: Genetic algorithm parameters (mutation probabilities, limits)
+//! - Execution Configuration: Parallelism, connection pooling, snapshot/restore backends
+//! - State Management: Adaptive state prediction and constraint-based synthesis
+//! - Plugin System: Protocol handlers, integrity checkers, oracles, encryptors
+//! - NXS Integration: Crash deduplication and triage backend configuration
+//!
+//! Configuration Format
+//! Configurations are loaded from plaintext files using key=value syntax with comment support.
+//! All unrecognized keys are silently ignored to maintain forward compatibility.
 
 use crate::common::error::{NexsizError, Result};
 use std::fs;
