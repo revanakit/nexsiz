@@ -1,12 +1,50 @@
-//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//! NEXSIZ — Stateful Network Protocol Fuzzer (next-generation)
 //!
-//! Author  : Revana
-//! Date    : 08/08/2026
-//! Files   : nexsiz/src/main.rs
+//! Short description:
+//!   Entry point for Nexsiz. Implements a compact, dependency-free CLI
+//!   parser and dispatches to either the built-in native fuzzing engine or
+//!   the LibAFL-backed campaign runner (when compiled with the `libafl` feature).
 //!
-//! Entry point. Parses a minimal CLI (no external clap dependency) and
-//! launches the fuzzing engine (native or LibAFL-powered).
-//! Short aliases prioritised for operational speed and memorability.
+//! Responsibilities:
+//!   - Parse command-line options and environment overrides into a `Config`.
+//!   - Support offline model inference from a seed directory and optional
+//!     model export (human-readable or JSON when `json-model` feature is enabled).
+//!   - Provide utility sub-commands such as NXS resolution listing and
+//!     inference-only mode that exit without launching a campaign.
+//!   - Initialize and run the chosen `Engine`, handling initialization errors
+//!     and returning appropriate process exit codes on failure.
+//!
+//! Notable runtime behaviors & features:
+//!   - Minimal argument parsing (no external clap dependency) for low overhead.
+//!   - Optional snapshotting/sandboxing support (process respawn or CRIU) gated
+//!     by `--snapshot` and `--snapshot-backend` (CRIU requires the `criu` feature).
+//!   - Optional LibAFL integration (build with `--features libafl`) to delegate
+//!     campaign control to LibAFL harnesses.
+//!   - NXS (existence scripts) discovery and execution coordination; configurable
+//!     via flags or environment variables (NEXSIZ_NXS, NEXSIZ_NXS_PATH).
+//!   - Multiple instrumentation/coverage backends: SHM-based agent id, software,
+//!     or map coverage as selected via CLI flags.
+//!   - Deterministic options: RNG seed, execution limits, per-operation timeouts,
+//!     and worker thread counts for reproducible experiments.
+//!
+//! Environment variables (short list):
+//!   - NEXSIZ_ENC_KEY / NEXSIZ_ENC_NONCE  : default encryptor key/nonce overrides
+//!   - NEXSIZ_SHM_ID                       : coverage SHM id for external agents
+//!   - NEXSIZ_RPC_SOCK                     : unix socket path for Python/RPC control
+//!   - NEXSIZ_NXS / NEXSIZ_NXS_PATH        : NXS set and search paths
+//!
+//! Output & error handling:
+//!   - Human-friendly banners, summaries (e.g., model inference), and detailed
+//!     error messages printed to stdout/stderr as appropriate.
+//!   - Non-zero process exit on configuration, initialization, or runtime errors.
+//!
+//! Author: Revana
+//! Date  : 09/08/2026
+//! Path  : nexsiz/src/main.rs
+//! Version: see crate VERSION constant
+//!
+//! See README and the repository documentation for full operational examples
+//! and feature-specific build instructions.
 
 use nexsiz::common::config::Config;
 use nexsiz::common::error::{NexsizError, Result};
