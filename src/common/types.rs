@@ -1,10 +1,43 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 07/08/2026
+//! Date    : 09/08/2026
 //! Files   : nexsiz/src/common/types.rs
 //!
-//! Core data types used across all Nexsiz layers.
+//! NEXSIZ — NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Module: nexsiz::common::types
+//!
+//! Summary:
+//! Core data-type definitions shared across Nexsiz layers: semantic field types
+//! and fields (FieldType, Field), ordered message containers (Message), test-case
+//! seeds (TestCase), execution outcomes/results (ExecutionResult, OutcomeClass),
+//! lightweight state descriptors (StateDescriptor), and campaign statistics
+//! (CampaignStats).
+//!
+//! Technical notes:
+//! - Message and TestCase serialization is a simple concatenation of field bytes
+//!   (Message::serialize, TestCase::serialize). Any framing or protocol-specific
+//!   encoding must be handled by the consumer (executor/mutator).
+//! - FieldType::Length and FieldType::Checksum are semantic hints intended for
+//!   mutators/instrumentors — length and checksum values should be recomputed by
+//!   the mutation or execution layer when fields are modified.
+//! - Field.size (Option<usize>) expresses an optional fixed-size constraint.
+//!   Field.protected marks fields that mutators should avoid modifying
+//!   aggressively (e.g., critical headers or protocol opcodes).
+//! - Message.meta stores optional per-message metadata (direction, required
+//!   state, etc.) that state machines, schedulers, or validators may use to
+//!   enforce ordering and validity rules.
+//! - OutcomeClass exists to provide finer-grained execution classification; the
+//!   Default variant is preserved for compatibility with external observers
+//!   (for example, LibAFL) that rely on skip/serialization semantics.
+//! - These types are intentionally representational and minimal: responsibilities
+//!   such as recalculating lengths/checksums, instrumentation, and coverage
+//!   bookkeeping belong to the executor, mutator, and instrumentor layers that
+//!   consume these structures.
+//!
+//! This header provides a concise developer-facing overview; refer to the type
+//! definitions below for implementation details.
 
 use std::collections::HashMap;
 use std::fmt;
