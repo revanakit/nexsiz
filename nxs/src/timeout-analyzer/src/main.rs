@@ -1,4 +1,4 @@
-//! nxs-timeout-analyzer — official existence script
+//! nxs-timeout-analyzer — official nexsiz existence script
 //!
 //! Contract id: hang/timeout-analyzer
 //! Purpose    : Characterise a hang input with several timed probes.
