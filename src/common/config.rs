@@ -2,7 +2,7 @@
 //!
 //! Author  : Revana
 //! Date    : 09/08/2026
-//! Files   : nexsiz::src::common::config
+//! Module  : nexsiz::src::common::config
 //!
 //! NEXSIZ Configuration Module
 //!
