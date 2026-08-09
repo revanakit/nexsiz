@@ -1,4 +1,4 @@
-//! nxs-chain-repro — official existence script (Phase 0–2)
+//! nxs-chain-repro — official nexsiz existence script (Phase 0–2)
 //!
 //! Contract id: crash/chain-repro
 //! Purpose    : After a crash is discovered, perform a bounded sequence of
