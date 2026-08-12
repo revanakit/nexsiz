@@ -2,7 +2,7 @@
 //!
 //! Author  : Revana
 //! Date    : 12/08/2026
-//! Module: nexsiz::src::coverage::software
+//! Module  : nexsiz::src::coverage::software
 //!
 //! Software / Response-Edge Coverage Provider
 //! -----------------------------------------
