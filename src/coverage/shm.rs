@@ -1,21 +1,54 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/coverage/shm.rs
+//! Date    : 13/08/2026
+//! Module  : nexsiz::src::coverage::shm
 //!
-//! NEXSIZ – POSIX shared-memory coverage map (Linux)
+//! POSIX Shared-Memory Coverage Map (Linux)
+//! ---------------------------------------
+//! Provides a thin, low-overhead wrapper around a POSIX shm-backed coverage
+//! bitmap compatible with AFL-style instrumentation. The region layout and
+//! semantics match classic map-based coverage collectors: a MAP_SIZE (64 KiB)
+//! byte array where each slot stores a saturating per-edge hit count.
 //!
-//! Layout (identical to AFL / SharedMapCoverage):
-//!   65536 bytes, each byte = saturating hit count for one edge slot.
+//! Naming and attachment:
+//! - Default name: /nexsiz-cov
+//! - With explicit id: /nexsiz-cov-<id>  (leading '/' accepted)
+//! - External instrumentation agents (Frida, LD_PRELOAD, helper daemons) may
+//!   open the same name and write hit counts concurrently.
 //!
-//! Name convention:
-//!   /nexsiz-cov           (default)
-//!   /nexsiz-cov-<id>      (when an id is supplied)
+//! Behaviour and guarantees:
+//! - On first creation the region is truncated to MAP_SIZE and zero-initialised.
+//! - mmap is used with MAP_SHARED and PROT_READ|PROT_WRITE to expose the bytes.
+//! - clear() zeroes the entire region before a run; snapshot() copies the
+//!   current contents into an in-process Vec<u8> for analysis/merging.
+//! - get(idx) reads a single byte slot (bounds-checked to return 0 on OOB).
+//! - Drop closes and unmaps the descriptor but intentionally does NOT call
+//!   shm_unlink so other processes and future fuzzer runs can reattach to the
+//!   same name; cleaning up /dev/shm is left to the operator.
 //!
-//! Nexsiz is the creator/owner; external agents (Frida, LD_PRELOAD, …)
-//! open the same name with O_RDWR and write hits. reset() zeroes the region;
-//! collect() snapshots it into the in-process virgin/seen logic.
+//! Concurrency, safety and performance:
+//! - The implementation marks ShmMap Send+Sync because the underlying bytes
+//!   are process-shared; external writers may mutate slots concurrently.
+//! - The design accepts AFL-like races: lost updates under contention are
+//!   tolerated, and callers should use the fuzzer's single-threaded reset/collect
+//!   barriers to provide higher-level synchronization where required.
+//! - Hot-path operations avoid locking and use simple byte reads/writes to
+//!   minimise instrumentation overhead; heavy merging or bookkeeping should be
+//!   performed off the hot path.
+//!
+//! Error semantics and robustness:
+//! - open() tries to attach to an existing region first, then creates with
+//!   O_CREAT|O_EXCL and gracefully handles races by retrying the open path.
+//! - Failures from shm_open, ftruncate, mmap, or fcntl-like calls are surfaced
+//!   as descriptive Err(String) values to let callers decide recovery strategies.
+//!
+//! Implementation guidance:
+//! - Keep resource acquisition (ftruncate/mmap) local to the provider; avoid
+//!   performing unrelated work while holding descriptors or mappings.
+//! - Avoid automatic unlinking on drop to prevent surprising teardown of
+//!   external instrumentation workflows; provide an explicit operator-facing
+//!   helper if unlink semantics are ever required.
 
 use crate::coverage::provider::MAP_SIZE;
 use std::ffi::CString;
