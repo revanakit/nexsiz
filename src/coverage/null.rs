@@ -1,9 +1,9 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/coverage/null.rs
-//!
+//! Date    : 09/08/2026
+//! Module  : nexsiz::src::coverage::null
+//! 
 //! NEXSIZ – Null coverage provider (pure black-box)
 
 use crate::common::types::ExecutionResult;
