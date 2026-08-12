@@ -2,9 +2,39 @@
 //!
 //! Author  : Revana
 //! Date    : 07/08/2026
-//! Files   : nexsiz/src/coverage/provider.rs
+//! Module  : nexsiz::src::coverage::provider
 //!
-//! NEXSIZ – CoverageProvider trait
+//! Coverage provider abstraction and related types.
+//!
+//! This module defines the CoverageProvider trait and the CoverageFeedback
+//! struct which represent the engine-facing contract for collecting and
+//! reporting runtime coverage information produced by target executions.
+//!
+//! Key responsibilities:
+//! - Define a small, stable lifecycle for providers: `reset()` → run target →
+//!   `collect(&ExecutionResult)`.
+//! - Provide an implementation-agnostic feedback object (`CoverageFeedback`)
+//!   describing new/total edges, a compact map hash, and whether the input was
+//!   "interesting" (i.e., produced new coverage).
+//! - Expose optional hooks for advanced backends: `map_snapshot()` for raw
+//!   bitmap inspection and `total_edges()` for provider-local cardinality.
+//!
+//! Notes and guarantees:
+//! - The canonical bitmap size used by map-style providers is MAP_SIZE (64 KiB)
+//!   to keep parity with classic AFL-style instrumentation.
+//! - Implementers must be Send + Sync; providers are expected to be safe for
+//!   concurrent use by the fuzzing engine and should document any internal
+//!   synchronization or state mutation semantics.
+//! - Default implementations return empty/zero responses (no-op semantics) so
+//!   simple or remote-backed providers can opt-in to functionality selectively.
+//!
+//! Implementation guidance:
+//! - Providers that interact with external agents (e.g., frida, shared memory,
+//!   or out-of-process collectors) should keep IPC and serialization overhead
+//!   minimal in the hot path and perform heavier merging or bookkeeping
+//!   asynchronously when possible.
+//! - Keep `collect()` idempotent per execution and ensure any global seen-edge
+//!   tracking is consistent across threads/processes if used for scheduling.
 
 use crate::common::types::ExecutionResult;
 
