@@ -1,0 +1,13 @@
+[target] listening on 127.0.0.1:2121 pid=607
+[target] recv 0B from ('127.0.0.1', 41554) pid=607
+[target] recv 0B from ('127.0.0.1', 41556) pid=607
+[target] recv 6B from ('127.0.0.1', 41572) pid=607
+[target] recv 11B from ('127.0.0.1', 41576) pid=607
+[target] recv 28B from ('127.0.0.1', 41582) pid=607
+[target] recv 15B from ('127.0.0.1', 41594) pid=607
+[target] recv 12B from ('127.0.0.1', 41608) pid=607
+[target] recv 26B from ('127.0.0.1', 41612) pid=607
+[target] recv 8B from ('127.0.0.1', 41618) pid=607
+[target] recv 80B from ('127.0.0.1', 41628) pid=607
+[target] HANG trigger — sleeping forever
+[target] signal 15 received, pid=607 exiting
