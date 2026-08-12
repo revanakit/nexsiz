@@ -2,9 +2,46 @@
 //!
 //! Author  : Revana
 //! Date    : 07/08/2026
-//! Files   : nexsiz/src/coverage/registry.rs
+//! Module  : nexsiz::src::coverage::registry
 //!
-//! NEXSIZ – Coverage provider registry
+//! Coverage Provider Registry
+//! --------------------------
+//! Centralised resolver and light-weight registry for coverage backends. This
+//! module exposes a small, deterministic API to select and instantiate a
+//! CoverageProvider implementation by name, with optional POSIX shared-memory
+//! identifier support for map-style providers.
+//!
+//! Responsibilities:
+//! - Map user-facing identifiers (CLI flags, config values, or environment
+//!   variables) to concrete CoverageProvider implementations (Null, Map,
+//!   Software).
+//! - Provide a consistent precedence for SHM identifiers: explicit argument
+//!   > environment variable NEXSIZ_SHM_ID > none.
+//! - Keep the resolver headless and side-effect free (construction only).
+//!
+//! Recognised provider names:
+//! - map, shm, shared, afl, map+shm  → SharedMapCoverage (AFL-style bitmap)
+//! - software, soft, response, hybrid → SoftwareCoverage (response/edge hybrid)
+//! - anything else / None            → NullCoverage (pure black-box, no feedback)
+//!
+//! Behavioural notes:
+//! - resolve_coverage(name) is a convenience wrapper that forwards to
+//!   resolve_coverage_with_shm(name, None).
+//! - resolve_coverage_with_shm(name, shm_id) will prefer the explicit shm_id
+//!   argument; if None, it falls back to the NEXSIZ_SHM_ID environment value.
+//! - The resolver returns a boxed dyn CoverageProvider ready for use by the
+//!   fuzzing engine; callers should not assume concrete types beyond the
+//!   CoverageProvider trait contract.
+//!
+//! Testing and expectations:
+//! - Unit tests validate defaulting semantics (unknown => "null") and that
+//!   recognised identifiers instantiate the expected provider names.
+//!
+//! Implementation guidance:
+//! - Keep mappings and name parsing case-insensitive and forgiving of common
+//!   aliases to improve CLI ergonomics.
+//! - Avoid performing runtime SHM creation/opening in the resolver; let the
+//!   provider implementation manage resource acquisition and failure handling.
 
 use crate::coverage::map::SharedMapCoverage;
 use crate::coverage::null::NullCoverage;
