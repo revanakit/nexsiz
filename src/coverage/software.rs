@@ -2,14 +2,51 @@
 //!
 //! Author  : Revana
 //! Date    : 07/08/2026
-//! Files   : nexsiz/src/coverage/software.rs
+//! Module: nexsiz::src::coverage::software
 //!
-//! NEXSIZ – Software / response-edge coverage provider
+//! Software / Response-Edge Coverage Provider
+//! -----------------------------------------
+//! A lightweight, instrumentation-free coverage backend that converts protocol
+//! responses and observable outcomes into a compact set of synthetic "edges".
+//! This hybrid approach is intended for remote or closed targets where
+//! in-process instrumentation (SHM/mmap) is infeasible, while still offering
+//! stronger feedback than pure black-box response codes.
 //!
-//! Lightweight hybrid provider that turns protocol responses into a
-//! compact edge set without any binary instrumentation.
-//! Ideal for remote targets where SHM injection is impossible.
-//! Still far stronger than pure response-code black-box.
+//! Core behaviour:
+//! - Extracts deterministic edge identifiers from: a response-code chain,
+//!   truncated response-body fingerprints (first 48 bytes), and a combined
+//!   outcome/state hash. These items are combined using stable hashing utilities.
+//! - Maintains a global seen-edge set (HashSet<u64>) protected by a Mutex to
+//!   detect novelty across executions; per-execution state is otherwise
+//!   stateless and reset() is a no-op.
+//! - Reports CoverageFeedback containing new_edges, hit_edges, a compact map_hash,
+//!   and whether the execution was interesting (introduced new edges).
+//!
+//! Concurrency & performance:
+//! - The seen set is guarded by a Mutex and the total unique-edge count is
+//!   tracked with an AtomicU64. collect() holds the lock only while merging
+//!   the small edge vector, keeping the critical section short.
+//! - Hashing and set-insertion are the main cost; this design avoids heavy
+//!   instrumentation overhead and is suitable for high-latency remote targets.
+//!
+//! Design rationale and guarantees:
+//! - Deterministic edge derivation: the same ExecutionResult should yield the
+//!   same vector of edges (subject to hash collisions of the chosen hash funcs).
+//! - Idempotent per-edge accounting: repeated collects for the same observed
+//!   edges will not increment the global unique count after the first insertion.
+//! - The provider sacrifices fine-grained code coverage for deployability and
+//!   robustness against targets where binary instrumentation cannot be used.
+//!
+//! Implementation notes:
+//! - Keep the fingerprint size (48 bytes) and response-code combination logic
+//!   stable to allow meaningful comparisons across runs and experiments.
+//! - Consider hash quality and collision risk when tuning hash_bytes/hash_combine.
+//! - If needed, offload heavy aggregation or telemetry to a non-blocking thread
+//!   to keep collect() responsive in the hot path.
+//!
+//! Testing:
+//! - Unit tests validate novelty detection, repeated collection semantics, and
+//!   basic edge-extraction invariants.
 
 use crate::common::types::ExecutionResult;
 use crate::common::utils::{hash_bytes, hash_combine};
