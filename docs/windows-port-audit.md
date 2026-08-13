@@ -2,7 +2,7 @@
 
 **Date**: 2026-08-13  
 **Author**: Revana / Grok  
-**Status**: Phase 0 ✅  ·  Phase 1 ✅  ·  Phase 2 pending  
+**Status**: Phase 0 ✅  ·  Phase 1 ✅  ·  Phase 2 ✅  ·  Phase 3 pending  
 **Scope**: Full inventory + platform abstraction for multi-OS support.
 
 ---
@@ -13,7 +13,7 @@
 |-------|-------------|--------|
 | 0 | Audit + skeleton traits | ✅ Complete |
 | 1 | Linux SHM behind `SharedMemory` + wire into coverage | ✅ Complete |
-| 2 | Windows File Mapping implementation | Pending |
+| 2 | Windows File Mapping implementation | ✅ Complete |
 | 3 | Process / crash detection hardening | Pending |
 | 4 | Integration & edge cases | Pending |
 | 5 | CI matrix + packaging | Pending |
@@ -22,44 +22,38 @@
 
 ## 1. Executive Summary
 
-Nexsiz is currently a **Linux-primary** pure-Rust fuzzer. The majority of the codebase is already portable. Only a small set of modules interact with OS primitives that differ significantly on Windows.
+Nexsiz is a pure-Rust stateful network protocol fuzzer. The majority of the codebase is portable. Platform-specific primitives are isolated behind `crate::platform`.
 
-**Key finding**: No full rewrite is required. An abstraction layer + Windows implementations of 4–5 components will suffice.
-
-**Phase 1 result**: Coverage path now goes through `platform::current().create_coverage_map()`. Linux behaviour is unchanged; the path is ready for a Windows implementation.
+**Phase 2 result**: Windows grey-box coverage path is implemented via named File Mapping (`CreateFileMappingW` / `MapViewOfFile`). No extra crate was added — pure `extern "system"` FFI against `kernel32`.
 
 ---
 
-## 2. Inventory of Linux-Specific Code
+## 2. Shared Memory Naming (Agent Contract)
 
-### 2.1 Coverage / Shared Memory
+| Platform | Default name | With id |
+|----------|--------------|---------|
+| Linux | `/nexsiz-cov` | `/nexsiz-cov-<id>` |
+| Windows | `Local\nexsiz-cov` | `Local\nexsiz-cov-<id>` |
 
-| Item | Current (Linux) | Windows Equivalent |
-|------|-----------------|--------------------|
-| Creation / Open | `libc::shm_open` | `CreateFileMappingW` / `OpenFileMappingW` |
-| Size | `ftruncate` | size parameter to CreateFileMapping |
-| Mapping | `mmap(MAP_SHARED)` | `MapViewOfFile` |
-| Unmap | `munmap` + `close` | `UnmapViewOfFile` + `CloseHandle` |
-| Naming | `/nexsiz-cov[-<id>]` | `Global\\nexsiz-cov-<id>` or `Local\\...` |
-| Cleanup | No automatic unlink | No automatic unlink |
-
-**Location after Phase 1**: `src/platform/linux.rs` (`LinuxSharedMemory`).
-
-### 2.2 Process Monitoring (`src/execution/process_monitor.rs`)
-
-Mostly portable via `std::process`. Unix signal path is already `#[cfg(unix)]`.
-
-### 2.3 NXS Spawn & Reaper
-
-`setsid` and signal handling already gated with `#[cfg(unix)]`. Background reaper is fully portable.
-
-### 2.4 Snapshot / CRIU
-
-Feature-gated, Linux-only. Remains Linux-only for v1.
+- Windows uses the **Local\\** namespace so no elevation is required.
+- Frida / external agents must open the same name (UTF-16 on Windows).
+- Objects are intentionally **not** destroyed on Drop so agents and subsequent runs can reattach.
 
 ---
 
-## 3. Portable Components (No Change Required)
+## 3. Implementation Locations
+
+| Component | Path |
+|-----------|------|
+| Traits | `src/platform/mod.rs` |
+| Linux SHM | `src/platform/linux.rs` (`LinuxSharedMemory`) |
+| Windows File Mapping | `src/platform/windows.rs` (`WindowsSharedMemory`) |
+| Consumer | `src/coverage/map.rs` (`SharedMapCoverage`) |
+| Compatibility wrapper | `src/coverage/shm.rs` (thin adapter) |
+
+---
+
+## 4. Portable Components (No Change Required)
 
 - Semantic field model + hierarchical mutator
 - Integrity repair pipeline
@@ -72,36 +66,28 @@ Feature-gated, Linux-only. Remains Linux-only for v1.
 
 ---
 
-## 4. Abstraction Surface (Live)
+## 5. Remaining Platform Work
 
-```rust
-// src/platform/mod.rs
-pub trait SharedMemory: Send + Sync { ... }
-pub trait PlatformServices: Send + Sync {
-    fn create_coverage_map(&self, id: Option<&str>) -> Result<Box<dyn SharedMemory>, PlatformError>;
-}
-pub fn current() -> &'static dyn PlatformServices;
-```
+### Phase 3 — Process / Crash Detection
+- `std::process` already covers most spawn/wait/kill.
+- Unix signal path is already `#[cfg(unix)]`.
+- Optional: Job Objects for cleaner process-tree management on Windows.
 
-- Linux: full implementation (`LinuxSharedMemory`)
-- Windows: stub (returns clear error until Phase 2)
-- `SharedMapCoverage` now holds `Option<Box<dyn SharedMemory>>`
+### Phase 4 — Integration & Edge Cases
+- Connection reuse, path handling, NXS detach semantics on Windows.
+- End-to-end campaign validation.
 
----
-
-## 5. Frida Agent Considerations
-
-- Current agent assumes POSIX SHM naming.
-- Windows agent will need the equivalent named mapping.
-- Frida Windows support is mature.
+### Phase 5 — CI & Packaging
+- Unlock / extend `build.yml` with `windows-latest`.
+- Portable zip / optional MSI.
 
 ---
 
-## 6. Build & CI Notes
+## 6. Frida Agent Notes
 
-- `build.yml` is currently locked by the operator until the port is stable.
-- Later: add `windows-latest` to the matrix.
-- `criu` feature remains Linux-only.
+- Linux agent continues to use POSIX SHM names.
+- Windows agent must open `Local\nexsiz-cov` (or the id variant) via Windows File Mapping APIs / Frida’s Memory APIs.
+- Layout remains AFL-style 64 KiB edge map; only the transport differs.
 
 ---
 
@@ -109,37 +95,38 @@ pub fn current() -> &'static dyn PlatformServices;
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| SHM semantics differ | Medium | Explicit named objects + docs |
-| Frida agent divergence | Medium | Dual agent or portable naming |
-| Process group behaviour | Low | Feature-gate advanced detach |
+| SHM semantics differ | Medium | Documented naming + Local\\ namespace |
+| Frida agent divergence | Medium | Explicit agent contract above |
+| Process group behaviour | Low | Feature-gate advanced detach (Phase 3) |
 | Path separators | Low | Use `std::path` |
-| Performance difference | Low | Benchmark in Phase 2 |
+| Performance difference | Low | Benchmark when CI is unlocked |
 
 ---
 
 ## 8. Phase Checklists
 
 ### Phase 0 ✅
-- [x] Inventory
-- [x] Mapping to Windows equivalents
-- [x] Abstraction surface design
-- [x] Skeleton `src/platform/`
+- [x] Inventory + abstraction design + skeleton
 
 ### Phase 1 ✅
-- [x] Full Linux `SharedMemory` implementation in `platform/linux.rs`
-- [x] `SharedMapCoverage` consumes `platform::SharedMemory`
-- [x] `coverage/shm.rs` reduced to thin compatibility wrapper
-- [x] Zero behavioural change expected on Linux
+- [x] Linux `SharedMemory` live
+- [x] `SharedMapCoverage` consumes platform layer
 
-### Phase 2 (next)
-- [ ] Implement Windows File Mapping in `platform/windows.rs`
-- [ ] Validate coverage map with Frida on Windows
-- [ ] Document naming conventions for agents
+### Phase 2 ✅
+- [x] Windows `WindowsSharedMemory` via CreateFileMappingW / MapViewOfFile
+- [x] Naming convention documented (`Local\nexsiz-cov[-<id>]`)
+- [x] Zero extra crate dependency
+- [x] Linux path untouched
+
+### Phase 3 (next)
+- [ ] Review process monitor + NXS spawn/reaper for Windows edge cases
+- [ ] Optional Job Object support
+- [ ] Confirm crash/hang detection parity
 
 ---
 
 ## 9. Next Step
 
-**Phase 2 — Windows Shared Memory + Coverage**
+**Phase 3 — Process Management & Crash Detection**
 
-Implement `WindowsSharedMemory` using `CreateFileMapping` / `MapViewOfFile`, wire it through the existing trait, and keep the Linux path untouched.
+Audit and harden process spawn/monitor and NXS reaper for Windows, keeping Linux behaviour unchanged.
