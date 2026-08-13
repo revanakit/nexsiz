@@ -1,4 +1,9 @@
-
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Author  : Revana
+//! Date    : 13/08/2026
+//! Module  : nexsiz::src::input::mutator
+//!
 //! NEXSIZ — Hierarchical Mutator with Directed Scheduling, Templates, and Energy Feedback
 //! -------------------------------------------------------------------------------
 //! Purpose:
