@@ -14,6 +14,7 @@
 //! and a CoverageProvider layer for true grey-box instrumentation hooks.
 //! Plus an out-of-process RPC campaign control surface for Python scripting.
 //! Plus NXS existence-script integration (meta writer + non-blocking spawn).
+//! Plus a platform abstraction layer for multi-OS support (Windows, Linux, ...).
 //! Minimal external dependencies (libc for robust signal handling only).
 //! Designed for red-team / APT-grade reliability, modularity, and operational sustainability.
 
@@ -29,6 +30,7 @@ pub mod plugin;
 pub mod coverage;
 pub mod scripting;
 pub mod nxs;
+pub mod platform;
 
 pub use common::config::Config;
 pub use common::error::{NexsizError, Result};
