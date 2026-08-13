@@ -1,10 +1,53 @@
-//! NEXSIZ – Hierarchical mutator with directed scheduling, templates, energy feedback
-//! Author  : Revana
-//! Date    : 08/08/2026
+
+//! NEXSIZ — Hierarchical Mutator with Directed Scheduling, Templates, and Energy Feedback
+//! -------------------------------------------------------------------------------
+//! Purpose:
+//!   Implement a field-aware, hierarchical mutator used by the Nexsiz fuzzer to generate
+//!   candidate TestCase instances from existing inputs and protocol specifications.
+//!   This mutator supports:
+//!     - Message- and sequence-level mutations (splice, insert, remove, reorder).
+//!     - Field-level mutations (bit/byte flips, arithmetic, insert/delete/overwrite bytes).
+//!     - Template synthesis from MessageSpec and SequenceSpec to produce structurally
+//!       valid messages when protocol models are available.
+//!     - Directed scheduling via per-field "energy" that biases mutation targets
+//!       based on prior interesting outcomes (feedback-driven fuzzing).
 //!
-//! Phase 2: field-aware mutation — FieldSpec size / values / protected.
-//! Phase 3: directed field scheduling + MessageSpec/SequenceSpec templates +
-//!          field energy feedback from interesting outcomes.
+//! Key responsibilities:
+//!   - Expose a configurable Mutator type that consumes a ProtocolModel and RNG seed,
+//!     producing mutated TestCase objects compatible with the fuzzing pipeline.
+//!   - Maintain and update lightweight per-field energy counters and "last touched"
+//!     lists to guide subsequent mutation choices.
+//!   - Optionally repair/check payloads for protocol integrity before sending
+//!     (via crate::input::integrity) when repair is enabled.
+//!
+//! Configuration parameters (high-level):
+//!   - seed: RNG seed for deterministic mutation sequences (XorShift64).
+//!   - max_mutations: upper bound on how many mutation operations to apply per TestCase.
+//!   - hierarchical_prob: probability of performing sequence-level vs. message/field-level ops.
+//!   - field_prob: probability bias to choose field-level mutation branch.
+//!   - dict_prob: probability of leveraging the protocol dictionary during mutations.
+//!   - template_prob: probability to splice in a synthesized message or sequence from specs.
+//!   - repair (bool): whether to run integrity.prepare_for_send prior to sending.
+//!
+//! Threading and safety:
+//!   - The Mutator maintains internal RNG state and mutation bookkeeping; it is not
+//!     inherently thread-safe. If used concurrently, external synchronization is required.
+//!
+//! Integration points:
+//!   - Depends on: crate::input::model::{FieldSpec, MessageSpec, ProtocolModel},
+//!                  crate::input::integrity, crate::common::utils::XorShift64,
+//!                  crate::common::types::{TestCase, Message, Field, FieldType, SeedId}.
+//!   - Produces TestCase objects consumed by the fuzzing engine and transport layers.
+//!
+//! Notes on behavior and design trade-offs:
+//!   - Prioritises stateful, structure-aware mutations over purely random byte streams.
+//!   - Uses small, bounded per-field energy counters to bias selection without starving
+//!     other fields (saturates to a configurable ceiling via code constants).
+//!   - Size constraints defined by FieldSpec.size are strictly enforced before sending.
+//!
+//! Testing:
+//!   - Unit tests validate energy boosting, template synthesis for provided protocol
+//!     models (e.g., ftp, mqtt), and template-probability behavior.
 
 use crate::common::types::*;
 use crate::common::utils::XorShift64;
