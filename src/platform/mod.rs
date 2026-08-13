@@ -3,9 +3,13 @@
 //! This module isolates OS-specific primitives (shared memory, process group
 //! semantics, etc.) so that the rest of the fuzzer remains portable.
 //!
-//! Phase 0 (2026-08-13): traits + skeleton only.
-//! Phase 1 will move the existing Linux SHM implementation behind these traits
-//! and add a Windows File Mapping implementation.
+//! - Phase 0: traits + skeleton
+//! - Phase 1: Linux POSIX SHM behind SharedMemory
+//! - Phase 2: Windows File Mapping behind SharedMemory
+//!
+//! Naming conventions for external agents (Frida, etc.):
+//! - Linux:   `/nexsiz-cov` or `/nexsiz-cov-<id>`
+//! - Windows: `Local\nexsiz-cov` or `Local\nexsiz-cov-<id>`
 
 use std::fmt;
 
@@ -96,8 +100,7 @@ pub fn current() -> &'static dyn PlatformServices {
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         // Fallback for other Unix-like targets (macOS, etc.) — will be
-        // expanded in later phases. For now we reuse the Linux path where
-        // POSIX SHM is available.
+        // expanded in later phases.
         compile_error!("Nexsiz platform layer: unsupported target_os (only linux/windows for now)");
     }
 }
