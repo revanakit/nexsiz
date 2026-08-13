@@ -1,10 +1,15 @@
 //! NEXSIZ – LibAFL Executor (0.15.x)
 //! Author  : Revana
-//! Date    : 05/08/2026
+//! Date    : 13/08/2026
 //!
-//! CRITICAL: LibAFL 0.15 ObserversTuple is implemented for `()` and `(Head, Tail)`
-//! where Tail is itself an ObserversTuple. A bare `(Obs,)` is NOT valid.
-//! Always construct observer lists with `tuple_list!(obs)` → `(Obs, ())`.
+//! CRITICAL (LibAFL 0.15):
+//!   - ObserversTuple is implemented for `()` and `(Head, Tail)` where Tail is
+//!     itself an ObserversTuple. Always use `tuple_list!(obs)` → `(Obs, ())`.
+//!   - MaxMapFeedback looks up its observer **by name** inside the executor's
+//!     observer list. The StdMapObserver instance passed to MaxMapFeedback::new
+//!     MUST be the same instance (same name) that is later moved into the
+//!     executor. A detached/from_mut_ptr observer that never enters the tuple
+//!     causes `Option::unwrap()` panic in map.rs during evaluation.
 
 use crate::common::config::TargetConfig;
 use crate::common::types::{ExecutionResult, OutcomeClass, TestCase};
@@ -12,96 +17,28 @@ use crate::execution::connector::{execute_tcp, execute_udp, TcpConnector, UdpCon
 use crate::execution::reuse::ReusePolicy;
 use libafl::executors::{Executor, ExitKind, HasObservers};
 use libafl::inputs::{BytesInput, HasTargetBytes};
-use libafl::observers::Observer;
+use libafl::observers::{MapObserver, Observer, StdMapObserver};
 use libafl::state::HasExecutions;
 use libafl_bolts::tuples::{tuple_list, RefIndexable};
 use libafl_bolts::{AsSlice, Named};
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use std::fmt::Debug;
 use std::time::Duration;
 
 pub const RESPONSE_MAP_SIZE: usize = 1 << 16;
 
-/// Coverage / state observer for network responses.
-/// Must implement Serialize + Deserialize for Evaluator bounds in LibAFL 0.15.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResponseStateObserver {
-    name: Cow<'static, str>,
-    map: Vec<u8>,
-    pub last_state_hash: u64,
-    #[serde(skip)]
-    pub last_outcome: OutcomeClass,
-}
+/// Canonical observer list: single StdMapObserver named "response_map".
+/// `tuple_list!(StdMapObserver)` expands to `(StdMapObserver, ())`.
+pub type NexsizObservers = (StdMapObserver<'static>, ());
 
-impl ResponseStateObserver {
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            name: Cow::Borrowed(name),
-            map: vec![0u8; RESPONSE_MAP_SIZE],
-            last_state_hash: 0,
-            last_outcome: OutcomeClass::Ok,
-        }
-    }
-
-    #[inline]
-    pub fn map_mut(&mut self) -> &mut [u8] {
-        &mut self.map
-    }
-
-    pub fn observe_result(&mut self, result: &ExecutionResult) {
-        self.last_state_hash = result.state_hash;
-        self.last_outcome = result.outcome;
-
-        let mut idx = 0u64;
-        for &code in &result.response_codes {
-            idx = idx.wrapping_mul(31).wrapping_add(code as u64);
-        }
-        idx = idx.wrapping_mul(31).wrapping_add(result.state_hash);
-        // Also fold grey-box coverage hash when present
-        if result.coverage_map_hash != 0 {
-            idx = idx.wrapping_mul(31).wrapping_add(result.coverage_map_hash);
-        }
-        let slot = (idx as usize) % RESPONSE_MAP_SIZE;
-        let cell = &mut self.map[slot];
-        *cell = cell.saturating_add(1);
-
-        if result.crash
-            || result.outcome == OutcomeClass::Crash
-            || result.outcome == OutcomeClass::ConnectionReset
-        {
-            let crash_slot = RESPONSE_MAP_SIZE - 2;
-            self.map[crash_slot] = self.map[crash_slot].saturating_add(1);
-        }
-        if result.hang || result.outcome == OutcomeClass::Hang {
-            let hang_slot = RESPONSE_MAP_SIZE - 1;
-            self.map[hang_slot] = self.map[hang_slot].saturating_add(1);
-        }
-    }
-}
-
-impl Named for ResponseStateObserver {
-    fn name(&self) -> &Cow<'static, str> {
-        &self.name
-    }
-}
-
-impl<I, S> Observer<I, S> for ResponseStateObserver {
-    fn pre_exec(&mut self, _state: &mut S, _input: &I) -> Result<(), libafl::Error> {
-        self.map.fill(0);
-        self.last_state_hash = 0;
-        self.last_outcome = OutcomeClass::Ok;
-        Ok(())
-    }
-
-    fn post_exec(
-        &mut self,
-        _state: &mut S,
-        _input: &I,
-        _exit_kind: &ExitKind,
-    ) -> Result<(), libafl::Error> {
-        Ok(())
-    }
+/// Build a process-lifetime response map and a StdMapObserver over it.
+///
+/// The map is leaked so the observer can carry a `'static` lifetime and be
+/// moved freely into the executor / feedback without borrow issues. One map
+/// per process is fine for the single-core LibAFL path.
+pub fn make_response_observer() -> StdMapObserver<'static> {
+    let map: &'static mut [u8] =
+        Box::leak(vec![0u8; RESPONSE_MAP_SIZE].into_boxed_slice());
+    // Safety: map is leaked, never freed, never moved — satisfies from_mut_ptr contract.
+    unsafe { StdMapObserver::from_mut_ptr("response_map", map.as_mut_ptr(), RESPONSE_MAP_SIZE) }
 }
 
 fn bytes_to_testcase(id: u64, data: &[u8]) -> TestCase {
@@ -130,9 +67,31 @@ fn bytes_to_testcase(id: u64, data: &[u8]) -> TestCase {
     }
 }
 
-/// Canonical observer list type used throughout the LibAFL path.
-/// `tuple_list!(ResponseStateObserver)` expands to `(ResponseStateObserver, ())`.
-pub type NexsizObservers = (ResponseStateObserver, ());
+/// Fold an ExecutionResult into the response map (hitcounts-style).
+fn observe_into_map(map: &mut [u8], result: &ExecutionResult) {
+    let mut idx = 0u64;
+    for &code in &result.response_codes {
+        idx = idx.wrapping_mul(31).wrapping_add(code as u64);
+    }
+    idx = idx.wrapping_mul(31).wrapping_add(result.state_hash);
+    if result.coverage_map_hash != 0 {
+        idx = idx.wrapping_mul(31).wrapping_add(result.coverage_map_hash);
+    }
+    let slot = (idx as usize) % map.len().max(1);
+    map[slot] = map[slot].saturating_add(1);
+
+    if result.crash
+        || result.outcome == OutcomeClass::Crash
+        || result.outcome == OutcomeClass::ConnectionReset
+    {
+        let crash_slot = map.len().saturating_sub(2);
+        map[crash_slot] = map[crash_slot].saturating_add(1);
+    }
+    if result.hang || result.outcome == OutcomeClass::Hang {
+        let hang_slot = map.len().saturating_sub(1);
+        map[hang_slot] = map[hang_slot].saturating_add(1);
+    }
+}
 
 #[derive(Debug)]
 pub struct NexsizNetworkExecutor {
@@ -142,6 +101,7 @@ pub struct NexsizNetworkExecutor {
     reuse: ReusePolicy,
     pub observers: NexsizObservers,
     exec_count: u64,
+    last_outcome: OutcomeClass,
 }
 
 impl NexsizNetworkExecutor {
@@ -155,6 +115,7 @@ impl NexsizNetworkExecutor {
             target,
             observers,
             exec_count: 0,
+            last_outcome: OutcomeClass::Ok,
         }
     }
 
@@ -218,8 +179,14 @@ impl NexsizNetworkExecutor {
             }
         };
 
-        // observers.0 is ResponseStateObserver; observers.1 is ()
-        self.observers.0.observe_result(&result);
+        self.last_outcome = result.outcome;
+
+        // Write behavioural coverage into the StdMapObserver map.
+        // observers.0 is StdMapObserver; MapObserver::map_mut gives &mut [u8].
+        {
+            let map = self.observers.0.map_mut();
+            observe_into_map(map, &result);
+        }
 
         match result.outcome {
             OutcomeClass::Crash | OutcomeClass::ConnectionReset => ExitKind::Crash,
@@ -257,8 +224,24 @@ impl HasObservers for NexsizNetworkExecutor {
     }
 }
 
+/// Build executor with a fresh response-map observer.
+/// Prefer `build_executor_with_observer` when the same observer must also be
+/// passed to MaxMapFeedback::new (canonical wiring).
 pub fn build_default_executor(target: TargetConfig) -> NexsizNetworkExecutor {
-    let observer = ResponseStateObserver::new("response_state");
-    // tuple_list! produces (ResponseStateObserver, ()) — the form ObserversTuple requires.
+    let observer = make_response_observer();
     NexsizNetworkExecutor::new(target, tuple_list!(observer))
 }
+
+/// Build executor from an already-constructed StdMapObserver.
+/// Used by the runner so MaxMapFeedback and the executor share one instance.
+pub fn build_executor_with_observer(
+    target: TargetConfig,
+    observer: StdMapObserver<'static>,
+) -> NexsizNetworkExecutor {
+    NexsizNetworkExecutor::new(target, tuple_list!(observer))
+}
+
+// Silence unused-import noise when Observer trait methods are only used via
+// the StdMapObserver impl in libafl itself.
+#[allow(dead_code)]
+fn _observer_trait_bound<O: Observer<(), ()> + MapObserver + Named>(_: &O) {}

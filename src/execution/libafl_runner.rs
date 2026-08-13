@@ -1,13 +1,20 @@
 //! NEXSIZ – LibAFL campaign runner (single-core, 0.15.x)
 //! Author  : Revana
-//! Date    : 04/08/2026
+//! Date    : 13/08/2026
 //!
 //! Multi-core LLMP is temporarily deferred until the single-core path is solid.
 //! When workers > 1 we still run single-core (with a notice) for reliability.
+//!
+//! Observer / feedback wiring (LibAFL 0.15):
+//!   1. Create StdMapObserver ("response_map")
+//!   2. MaxMapFeedback::new(&observer)  — records the name
+//!   3. StdState::new(..., &mut feedback, &mut objective)
+//!   4. Move the SAME observer into the executor via build_executor_with_observer
+//! Feedback then resolves the observer by name inside the executor — no unwrap panic.
 
 use crate::common::config::Config;
 use crate::common::error::{NexsizError, Result};
-use crate::execution::libafl_exec::{build_default_executor, RESPONSE_MAP_SIZE};
+use crate::execution::libafl_exec::{build_executor_with_observer, make_response_observer};
 use crate::execution::libafl_mutator::NexsizHierarchicalMutator;
 use libafl::corpus::{Corpus, InMemoryCorpus, OnDiskCorpus};
 use libafl::events::SimpleEventManager;
@@ -15,7 +22,6 @@ use libafl::feedbacks::{CrashFeedback, MaxMapFeedback};
 use libafl::fuzzer::{Evaluator, Fuzzer, StdFuzzer};
 use libafl::inputs::BytesInput;
 use libafl::monitors::SimpleMonitor;
-use libafl::observers::StdMapObserver;
 use libafl::schedulers::QueueScheduler;
 use libafl::stages::StdMutationalStage;
 use libafl::state::{HasCorpus, StdState};
@@ -46,15 +52,14 @@ fn run_single_core(cfg: &Config) -> Result<()> {
     });
     let mut mgr = SimpleEventManager::new(mon);
 
-    let mut executor = build_default_executor(cfg.target.clone());
-    // observers = (ResponseStateObserver, ()) via tuple_list!
-    let map_ptr = executor.observers.0.map_mut().as_mut_ptr();
-    let edges_observer =
-        unsafe { StdMapObserver::from_mut_ptr("response_map", map_ptr, RESPONSE_MAP_SIZE) };
+    // 1. Observer first — must outlive feedback construction, then move into executor.
+    let edges_observer = make_response_observer();
 
+    // 2. Feedback bound to observer name "response_map".
     let mut feedback = MaxMapFeedback::new(&edges_observer);
     let mut objective = CrashFeedback::new();
 
+    // 3. State initialises feedback metadata from the observer.
     let mut state = StdState::new(
         StdRand::with_seed(cfg.rng_seed.unwrap_or(0xdead_beef)),
         InMemoryCorpus::<BytesInput>::new(),
@@ -65,6 +70,9 @@ fn run_single_core(cfg: &Config) -> Result<()> {
         &mut objective,
     )
     .map_err(|e| NexsizError::Config(format!("StdState: {}", e)))?;
+
+    // 4. Move the SAME observer into the executor so feedback lookup succeeds.
+    let mut executor = build_executor_with_observer(cfg.target.clone(), edges_observer);
 
     let seed_dir = PathBuf::from(&cfg.seed_dir);
 
@@ -90,7 +98,7 @@ fn run_single_core(cfg: &Config) -> Result<()> {
         }
     }
 
-    // Ensure at least one seed
+    // Ensure at least one seed so the loop never starts empty
     if state.corpus().is_empty() {
         let _ = fuzzer.add_input(
             &mut state,
