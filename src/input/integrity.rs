@@ -36,7 +36,7 @@
 //!
 //! API overview (public behavior):
 //!   - checksum_additive / checksum_xor / crc16_ccitt / crc32_ieee /
-///!     checksum_ones_complement
+//!     checksum_ones_complement
 //!   - write_length(buf, value, endian), write_checksum(buf, value, endian)
 //!   - repair_message / repair_message_ex (semantic field repair)
 //!   - repair_http_raw / repair_smtp_raw / repair_ftp_raw / repair_binary_length_prefix
@@ -45,7 +45,7 @@
 //!
 //! Performance & correctness notes:
 //!   - CRC implementations use simple bitwise algorithms (no table acceleration).
-//!    For high-throughput use-cases consider table-driven or hardware-accelerated
+//!     For high-throughput use-cases consider table-driven or hardware-accelerated
 //!     implementations (performance vs. clarity trade-off).
 //!   - String/UTF-8 conversions are used only for header parsing and normalization;
 //!     binary-safe paths operate on raw bytes to avoid lossy transforms.
@@ -58,7 +58,7 @@
 //!     CRLF normalization, and multi-field content-length rewriting.
 //!   - When adding new protocol rules, document assumptions (separator bytes,
 //!     canonical header forms) and add targeted unit tests.
-    
+
 use crate::common::types::*;
 
 // ── Checksum algorithms ──────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ pub fn repair_binary_length_prefix(data: &mut Vec<u8>, width: usize, endian: End
     }
 }
 
-/// SMTP-specific: ensure DATA body ends with &lt;CRLF&gt;.&lt;CRLF&gt; if it looks like DATA.
+/// SMTP-specific: ensure DATA body ends with <CRLF>.<CRLF> if it looks like DATA.
 pub fn repair_smtp_raw(data: &mut Vec<u8>) {
     ensure_crlf_termination(data);
     // If the buffer contains a DATA command region, try to keep terminator intact
