@@ -1,7 +1,56 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
 //! Author  : Revana
-//! Date    : 04/08/2026
-//! Corpus management: seed queue, energy + rarity-guided scheduling, deduplication.
+//! Date    : 13/08/2026
+//! Module  : nexsiz::src::input::corpus
+//!
+//! Purpose:
+//!   Thread-safe corpus and seed-queue management used by the fuzzer's mutation
+//!   and scheduling subsystems. Provides deduplication, energy- and
+//!   rarity-guided scheduling, promotion of 'interesting' seeds, and stable id
+//!   assignment for replay/minimization.
+//!
+//! Responsibilities:
+//!   - Store and index TestCase entries keyed by SeedId, assigning unique ids.
+//!   - Maintain an ordered scheduling queue of SeedId values supporting:
+//!       * energy-weighted sampling (roulette-wheel)
+//!       * front-promotion of 'interesting' seeds
+//!   - Deduplicate inputs via a stable content_hash(TestCase).
+//!   - Expose a compact, Mutex-protected API for concurrent access by fuzzing
+//!     agents (add_seeds, add_if_new, schedule, mark_interesting, etc.).
+//!
+//! Key concepts & invariants:
+//!   - Each TestCase contains: id (SeedId), energy (f64, >= 0.01), optional
+//!     last_state, and an 'interesting' boolean. Energies are clamped to bounds.
+//!   - The queue holds only SeedId values; the authoritative TestCase storage is
+//!     the entries map. queue and entries must remain consistent under the lock.
+//!   - Deduplication relies on content_hash stability: identical content -> same
+//!     hash -> insertion rejected.
+//!
+//! Concurrency & performance notes:
+//!   - Corpus uses a single Mutex<CorpusInner> to ensure correctness. Keep
+//!     critical sections short; for extremely high concurrency consider sharded
+//!     corpora or alternate synchronization strategies.
+//!   - schedule() currently computes energy weights on each call (O(n)). For
+//!     very large corpora consider an index structure (Fenwick tree, alias
+//!     table) to reduce sampling complexity.
+//!
+//! API overview (public behavior):
+//!   - new(), add_seeds(Vec<TestCase>) -> usize
+//!   - add_if_new(TestCase) -> Option<SeedId>
+//!   - schedule(&mut XorShift64) -> Option<TestCase>
+//!   - mark_interesting(SeedId, Option<u64>), apply_rarity_boost(SeedId, f64)
+//!   - set_energy(SeedId, f64), get(SeedId) -> Option<TestCase>
+//!   - len(), queue_len(), interesting_count(), next_id()
+//!
+//! Tuning & maintenance:
+//!   - Energy multipliers, rarity boost curves and clamping are heuristic and
+//!     should be tuned per target protocol and workload.
+//!   - Ensure content_hash is collision-resistant for effective deduplication.
+//!
+//! Tests:
+//!   - Unit tests validate deduplication, scheduling behavior, energy/rarity
+//!     boosting and basic API correctness.
 
 use crate::common::types::*;
 use crate::common::utils::XorShift64;
