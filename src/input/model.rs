@@ -1,10 +1,47 @@
-//! NEXSIZ – Protocol model, seed parsing, and structured field trees
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ — Protocol model, seed parsing, and structured field trees
 //!
-//! Phase 1–2: FieldSpec/MessageSpec, formal built-ins, grammar inference.
-//! Phase 3: SequenceSpec multi-message flows (login → pass, connect → publish).
-//! Phase 4: DesocketSpec — operator-defined protocol reset sequences (JSON models).
+//! Module purpose
+//! ----------------
+//! This module provides an in-memory, minimal but expressive representation of
+//! network protocol structure used by the fuzzer core. It contains:
+//!  - ProtocolModel: high-level protocol descriptors (dictionary, framing rules,
+//!    message templates, sequences, and optional desocket/reset sequences).
+//!  - MessageSpec / FieldSpec: typed field-level templates used to describe
+//!    message layouts (commands, lengths, numeric fields, payloads, checksums).
+//!  - Convenience constructors for common protocols (FTP, HTTP, DNS, MQTT, SMB,
+//!    and configurable binary length-prefixed frames).
+//!  - Seed and testcase helpers: load seeds from disk, build TestCase objects,
+//!    compute content hashes, and infer simple models from sample byte slices.
+//!
+//! Design notes & guarantees
+//! -------------------------
+//!  - Representation is intentionally lightweight and focused on fuzzing-time
+//!    operations: model instances are intended to be read/constructed by the
+//!    fuzzer and its inference routines rather than as a canonical wire-spec.
+//!  - Error handling uses the crate-local NexsizError and Result types; IO and
+//!    parsing helpers return informative errors for configuration problems.
+//!  - Dictionaries and token extraction are heuristics used for candidate
+//!    tokenization and mutation guidance — they are not exhaustive protocol
+//!    parsers and must not be relied upon as authoritative protocol validators.
+//!
+//! Public API highlights
+//! ----------------------
+//!  - ProtocolModel::generic() and protocol-specific constructors (ftp(), dns(),
+//!    mqtt(), etc.) provide ready-to-use models for common protocols and tests.
+//!  - extend_dictionary(), find_message(), and infer_model_from_bytes() support
+//!    dynamic augmentation and lightweight model inference from observed traffic.
+//!  - load_seeds_from_dir() converts disk-side seed files into TestCase objects
+//!    (plain files map to raw payloads, .txt files are split into CRLF-delimited
+//!    lines and wrapped as String fields).
+//!
+//! Stability and future work
+//! -------------------------
+//!  - Current API is stable for use by internal fuzzer components, but layout
+//!    and semantics may evolve across major releases as Phase-3/4 features are
+//!    implemented (SequenceSpec-driven flows, operator-defined DesocketSpec
+//!    JSON models, etc.).
+//!  - TODO: add serde support for importing/exporting models, richer checksum
+//!    expressions, and pluggable tokenizers for non-ASCII protocols.
 
 use crate::common::error::{NexsizError, Result};
 use crate::common::types::*;
