@@ -1,120 +1,107 @@
-# Windows Port Audit — Phase 0
+# Windows Port Audit & Progress
 
 **Date**: 2026-08-13  
 **Author**: Revana / Grok  
-**Status**: Complete  
-**Scope**: Full inventory of platform-specific code required for Windows support.
+**Status**: Phase 0 ✅  ·  Phase 1 ✅  ·  Phase 2 pending  
+**Scope**: Full inventory + platform abstraction for multi-OS support.
+
+---
+
+## Current Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Audit + skeleton traits | ✅ Complete |
+| 1 | Linux SHM behind `SharedMemory` + wire into coverage | ✅ Complete |
+| 2 | Windows File Mapping implementation | Pending |
+| 3 | Process / crash detection hardening | Pending |
+| 4 | Integration & edge cases | Pending |
+| 5 | CI matrix + packaging | Pending |
 
 ---
 
 ## 1. Executive Summary
 
-Nexsiz is currently a **Linux-primary** pure-Rust fuzzer. The majority of the codebase (semantic mutation, integrity repair, state tracking, plugins, NXS logic, scripting) is already portable. Only a small set of modules interact with OS primitives that differ significantly on Windows.
+Nexsiz is currently a **Linux-primary** pure-Rust fuzzer. The majority of the codebase is already portable. Only a small set of modules interact with OS primitives that differ significantly on Windows.
 
 **Key finding**: No full rewrite is required. An abstraction layer + Windows implementations of 4–5 components will suffice.
+
+**Phase 1 result**: Coverage path now goes through `platform::current().create_coverage_map()`. Linux behaviour is unchanged; the path is ready for a Windows implementation.
 
 ---
 
 ## 2. Inventory of Linux-Specific Code
 
-### 2.1 Coverage / Shared Memory (`src/coverage/shm.rs`)
+### 2.1 Coverage / Shared Memory
 
-| Item | Current Implementation | Windows Equivalent |
-|------|------------------------|--------------------|
-| Creation / Open | `libc::shm_open` + `O_CREAT\|O_EXCL` | `CreateFileMappingW` / `OpenFileMappingW` |
-| Size | `ftruncate` | `CreateFileMapping` size parameter |
-| Mapping | `mmap(..., MAP_SHARED, PROT_READ\|PROT_WRITE)` | `MapViewOfFile` |
+| Item | Current (Linux) | Windows Equivalent |
+|------|-----------------|--------------------|
+| Creation / Open | `libc::shm_open` | `CreateFileMappingW` / `OpenFileMappingW` |
+| Size | `ftruncate` | size parameter to CreateFileMapping |
+| Mapping | `mmap(MAP_SHARED)` | `MapViewOfFile` |
 | Unmap | `munmap` + `close` | `UnmapViewOfFile` + `CloseHandle` |
-| Naming | `/nexsiz-cov` or `/nexsiz-cov-<id>` | `Global\\nexsiz-cov-<id>` or `Local\\...` |
-| Cleanup | Intentionally **no** `shm_unlink` on Drop | No automatic unlink; operator cleans named objects |
+| Naming | `/nexsiz-cov[-<id>]` | `Global\\nexsiz-cov-<id>` or `Local\\...` |
+| Cleanup | No automatic unlink | No automatic unlink |
 
-**Impact**: High. This is the grey-box coverage path used by the Frida agent.
-
-**Notes**:
-- Frida on Windows already supports shared memory / custom agents.
-- Prefer named file mapping over pagefile-backed for cross-process visibility with Frida.
+**Location after Phase 1**: `src/platform/linux.rs` (`LinuxSharedMemory`).
 
 ### 2.2 Process Monitoring (`src/execution/process_monitor.rs`)
 
-| Item | Current | Windows |
-|------|---------|---------|
-| Spawn | `std::process::Command` (works) | Same (`Command` is cross-platform) |
-| Wait non-blocking | `Child::try_wait` | Same |
-| Kill | `Child::kill` | Same |
-| Crash detection | Exit status + Unix signal via `ExitStatusExt` | `GetExitCodeProcess` + structured exception if needed |
+Mostly portable via `std::process`. Unix signal path is already `#[cfg(unix)]`.
 
-**Impact**: Low–Medium. `std::process` already abstracts most of this. Only the Unix-specific signal path in the reaper needs attention.
+### 2.3 NXS Spawn & Reaper
 
-### 2.3 NXS Spawn & Reaper (`src/nxs/spawn.rs`, `src/nxs/reaper.rs`)
+`setsid` and signal handling already gated with `#[cfg(unix)]`. Background reaper is fully portable.
 
-| Item | Current | Windows |
-|------|---------|---------|
-| Detach / new session | `libc::setsid()` via `pre_exec` (Unix only) | `CREATE_NEW_PROCESS_GROUP` or Job Objects |
-| Exit code observation | `Child::try_wait` + `status.code()` | Same |
-| Signal termination | `#[cfg(unix)]` + `ExitStatusExt::signal()` | Treat as non-zero / map to exit 4 |
-| Background reaper | Thread + `mpsc` + `try_wait` every 250 ms | Fully portable |
+### 2.4 Snapshot / CRIU
 
-**Impact**: Low. Already mostly portable; only the `setsid` and signal handling need Windows equivalents.
-
-### 2.4 Snapshot / CRIU (`src/execution/snapshot/`)
-
-- CRIU is Linux-only (feature-gated).
-- On Windows this path can remain a no-op or be replaced later by process snapshot APIs if desired.
-- **Decision for v1**: Keep `criu` feature Linux-only; Windows uses null / process restart strategy.
-
-### 2.5 Other Occurrences
-
-- `src/nxs/reaper.rs`: explicit `#[cfg(unix)]` for signal handling — already correctly gated.
-- `src/nxs/spawn.rs`: `#[cfg(unix)]` for `setsid` — already gated.
-- No heavy use of `/proc`, `pidfd_*`, cgroup, or other Linux-only syscalls in the hot path beyond the SHM module.
-- Frida agent (`agents/frida/nexsiz_cov.js`) currently assumes POSIX SHM name layout.
+Feature-gated, Linux-only. Remains Linux-only for v1.
 
 ---
 
 ## 3. Portable Components (No Change Required)
 
-- Semantic field model + hierarchical mutator (`src/input/`)
+- Semantic field model + hierarchical mutator
 - Integrity repair pipeline
-- Hybrid state tracker + predictor (`src/state/`)
-- Plugin system (Protocol / Integrity / Oracle / Encryptor)
-- Coverage provider trait + Null / Software / Map providers
+- Hybrid state tracker + predictor
+- Plugin system
+- Coverage provider trait + Null / Software providers
 - Scripting / RPC bridges
-- Core engine, workers, connection reuse (TCP)
-- Configuration, logging, minimizer, oracle orchestration
-- NXS resolve / rate limiting / meta writer (pure logic)
+- Core engine, workers, connection reuse
+- NXS resolve / rate limiting / meta writer
 
 ---
 
-## 4. Recommended Abstraction Surface (Phase 1)
+## 4. Abstraction Surface (Live)
 
 ```rust
-// src/platform/mod.rs (implemented in Phase 0)
-
+// src/platform/mod.rs
 pub trait SharedMemory: Send + Sync { ... }
-pub trait PlatformServices: Send + Sync { ... }
+pub trait PlatformServices: Send + Sync {
+    fn create_coverage_map(&self, id: Option<&str>) -> Result<Box<dyn SharedMemory>, PlatformError>;
+}
 pub fn current() -> &'static dyn PlatformServices;
 ```
 
-- Linux implementation moves existing `ShmMap` behind the trait.
-- Windows implementation uses File Mapping APIs.
-- Coverage registry resolves the correct provider based on `target_os` or explicit config.
+- Linux: full implementation (`LinuxSharedMemory`)
+- Windows: stub (returns clear error until Phase 2)
+- `SharedMapCoverage` now holds `Option<Box<dyn SharedMemory>>`
 
 ---
 
 ## 5. Frida Agent Considerations
 
-- Current agent (`agents/frida/nexsiz_cov.js`) hard-codes POSIX SHM naming.
-- Windows agent must open the equivalent named mapping.
-- Frida’s Windows support is mature; we only need a Windows-specific variant of the coverage writer or a portable naming scheme.
+- Current agent assumes POSIX SHM naming.
+- Windows agent will need the equivalent named mapping.
+- Frida Windows support is mature.
 
 ---
 
-## 6. Build & CI Notes (for later phases)
+## 6. Build & CI Notes
 
-- Add `x86_64-pc-windows-msvc` (and optionally `x86_64-pc-windows-gnu`) to CI matrix.
-- `libc` crate is already present and works on Windows (provides some compatibility).
-- Prefer pure `windows` crate or `winapi` only where necessary; keep surface minimal.
-- Feature flags: keep `libafl` and `criu` as-is; `criu` remains Linux-only.
+- `build.yml` is currently locked by the operator until the port is stable.
+- Later: add `windows-latest` to the matrix.
+- `criu` feature remains Linux-only.
 
 ---
 
@@ -122,33 +109,37 @@ pub fn current() -> &'static dyn PlatformServices;
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| SHM semantics differ (permissions, lifetime) | Medium | Explicit named objects + documentation |
+| SHM semantics differ | Medium | Explicit named objects + docs |
 | Frida agent divergence | Medium | Dual agent or portable naming |
-| Process group / job object behaviour | Low | Feature-gate advanced detach |
-| Path separators / long paths | Low | Use `std::path` consistently |
-| Performance of File Mapping vs POSIX SHM | Low | Benchmark in Phase 2 |
+| Process group behaviour | Low | Feature-gate advanced detach |
+| Path separators | Low | Use `std::path` |
+| Performance difference | Low | Benchmark in Phase 2 |
 
 ---
 
-## 8. Phase 0 Deliverables Checklist
+## 8. Phase Checklists
 
-- [x] Full inventory of Linux-specific APIs
+### Phase 0 ✅
+- [x] Inventory
 - [x] Mapping to Windows equivalents
-- [x] Identification of portable vs non-portable modules
-- [x] Proposed abstraction surface
-- [x] Risk register
-- [x] Skeleton `src/platform/` module (`mod.rs`, `linux.rs`, `windows.rs`)
-- [x] `platform` declared in `src/lib.rs`
-- [ ] Update `Cargo.toml` / toolchain notes if needed (none required for Phase 0)
+- [x] Abstraction surface design
+- [x] Skeleton `src/platform/`
+
+### Phase 1 ✅
+- [x] Full Linux `SharedMemory` implementation in `platform/linux.rs`
+- [x] `SharedMapCoverage` consumes `platform::SharedMemory`
+- [x] `coverage/shm.rs` reduced to thin compatibility wrapper
+- [x] Zero behavioural change expected on Linux
+
+### Phase 2 (next)
+- [ ] Implement Windows File Mapping in `platform/windows.rs`
+- [ ] Validate coverage map with Frida on Windows
+- [ ] Document naming conventions for agents
 
 ---
 
 ## 9. Next Step
 
-Proceed to **Phase 1 — Platform Abstraction Layer**:
-1. Move existing Linux SHM (`coverage::shm::ShmMap`) behind the `SharedMemory` trait.
-2. Wire `platform::current().create_coverage_map(...)` into the coverage registry.
-3. Ensure zero regression on Linux.
-4. Keep Windows stub returning a clear error until Phase 2.
+**Phase 2 — Windows Shared Memory + Coverage**
 
-This document will be updated as implementation progresses.
+Implement `WindowsSharedMemory` using `CreateFileMapping` / `MapViewOfFile`, wire it through the existing trait, and keep the Linux path untouched.
