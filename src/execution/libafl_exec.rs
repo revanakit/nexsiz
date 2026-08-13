@@ -10,6 +10,8 @@
 //!     MUST be the same instance (same name) that is later moved into the
 //!     executor. A detached/from_mut_ptr observer that never enters the tuple
 //!     causes `Option::unwrap()` panic in map.rs during evaluation.
+//!   - StdMapObserver<'a, T, const DIFFERENTIAL: bool> — we use u8 + false
+//!     (classic hitcounts map, non-differential).
 
 use crate::common::config::TargetConfig;
 use crate::common::types::{ExecutionResult, OutcomeClass, TestCase};
@@ -25,16 +27,19 @@ use std::time::Duration;
 
 pub const RESPONSE_MAP_SIZE: usize = 1 << 16;
 
+/// Canonical observer: hitcounts map (u8), non-differential.
+pub type ResponseMapObserver = StdMapObserver<'static, u8, false>;
+
 /// Canonical observer list: single StdMapObserver named "response_map".
-/// `tuple_list!(StdMapObserver)` expands to `(StdMapObserver, ())`.
-pub type NexsizObservers = (StdMapObserver<'static>, ());
+/// `tuple_list!(obs)` expands to `(Obs, ())`.
+pub type NexsizObservers = (ResponseMapObserver, ());
 
 /// Build a process-lifetime response map and a StdMapObserver over it.
 ///
 /// The map is leaked so the observer can carry a `'static` lifetime and be
 /// moved freely into the executor / feedback without borrow issues. One map
 /// per process is fine for the single-core LibAFL path.
-pub fn make_response_observer() -> StdMapObserver<'static> {
+pub fn make_response_observer() -> ResponseMapObserver {
     let map: &'static mut [u8] =
         Box::leak(vec![0u8; RESPONSE_MAP_SIZE].into_boxed_slice());
     // Safety: map is leaked, never freed, never moved — satisfies from_mut_ptr contract.
@@ -236,7 +241,7 @@ pub fn build_default_executor(target: TargetConfig) -> NexsizNetworkExecutor {
 /// Used by the runner so MaxMapFeedback and the executor share one instance.
 pub fn build_executor_with_observer(
     target: TargetConfig,
-    observer: StdMapObserver<'static>,
+    observer: ResponseMapObserver,
 ) -> NexsizNetworkExecutor {
     NexsizNetworkExecutor::new(target, tuple_list!(observer))
 }
