@@ -88,21 +88,10 @@ Nexsiz is currently a **Linux-primary** pure-Rust fuzzer. The majority of the co
 ## 4. Recommended Abstraction Surface (Phase 1)
 
 ```rust
-// src/platform/mod.rs (sketch)
+// src/platform/mod.rs (implemented in Phase 0)
 
-pub trait SharedMemory: Send + Sync {
-    fn name(&self) -> &str;
-    fn clear(&self);
-    fn snapshot(&self) -> Vec<u8>;
-    fn get(&self, idx: usize) -> u8;
-    fn as_mut_ptr(&self) -> *mut u8; // for advanced use
-}
-
-pub trait PlatformServices: Send + Sync {
-    fn create_coverage_map(&self, id: Option<&str>) -> Result<Box<dyn SharedMemory>, String>;
-    // future: process group / job object helpers if needed
-}
-
+pub trait SharedMemory: Send + Sync { ... }
+pub trait PlatformServices: Send + Sync { ... }
 pub fn current() -> &'static dyn PlatformServices;
 ```
 
@@ -148,17 +137,18 @@ pub fn current() -> &'static dyn PlatformServices;
 - [x] Identification of portable vs non-portable modules
 - [x] Proposed abstraction surface
 - [x] Risk register
-- [ ] Skeleton `src/platform/` module (next commit)
-- [ ] Update `Cargo.toml` / toolchain notes if needed
+- [x] Skeleton `src/platform/` module (`mod.rs`, `linux.rs`, `windows.rs`)
+- [x] `platform` declared in `src/lib.rs`
+- [ ] Update `Cargo.toml` / toolchain notes if needed (none required for Phase 0)
 
 ---
 
 ## 9. Next Step
 
 Proceed to **Phase 1 — Platform Abstraction Layer**:
-1. Create `src/platform/` with traits.
-2. Move existing Linux SHM behind the trait.
+1. Move existing Linux SHM (`coverage::shm::ShmMap`) behind the `SharedMemory` trait.
+2. Wire `platform::current().create_coverage_map(...)` into the coverage registry.
 3. Ensure zero regression on Linux.
-4. Add Windows stub that returns a clear “not yet implemented” error (or soft null coverage).
+4. Keep Windows stub returning a clear error until Phase 2.
 
 This document will be updated as implementation progresses.
