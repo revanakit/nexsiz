@@ -52,12 +52,12 @@
 //!   - Heuristics (e.g., selecting which checksum algorithm to auto-apply based
 //!     on field width) are conservative but tunable — validate against protocol
 //!     specifications for production fuzz targets.
-//!
-//! Testing & maintenance:
-//!   - Unit tests exercise known vectors (CRC-16/CRC-32), Content-Length fixes,
-//!     CRLF normalization, and multi-field content-length rewriting.
-//!   - When adding new protocol rules, document assumptions (separator bytes,
-//!     canonical header forms) and add targeted unit tests.
+
+// Testing & maintenance:
+//   - Unit tests exercise known vectors (CRC-16/CRC-32), Content-Length fixes,
+//     CRLF normalization, and multi-field content-length rewriting.
+//   - When adding new protocol rules, document assumptions (separator bytes,
+//     canonical header forms) and add targeted unit tests.
 
 use crate::common::types::*;
 
