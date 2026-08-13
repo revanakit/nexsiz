@@ -1,7 +1,9 @@
-//! NEXSIZ — Protocol model, seed parsing, and structured field trees
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Module purpose
-//! ----------------
+//! Author  : Revana
+//! Date    : 13/08/2026
+//! Module  : nexsiz::src::input::model
+//!
 //! This module provides an in-memory, minimal but expressive representation of
 //! network protocol structure used by the fuzzer core. It contains:
 //!  - ProtocolModel: high-level protocol descriptors (dictionary, framing rules,
