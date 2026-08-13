@@ -1,4 +1,4 @@
-//! NEXSIZ – Protocol-Aware Integrity Repair
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
 //! Date    : 13/08/2026
