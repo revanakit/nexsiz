@@ -12,9 +12,12 @@
 //! Design goals:
 //!   - Zero behaviour change when provider = Null (default)
 //!   - High-performance edge map (AFL-style 64 KiB) for local/SHM targets
-//!   - POSIX SHM so Frida / external agents can write the same layout
+//!   - Platform shared-memory (POSIX SHM on Linux, File Mapping on Windows)
+//!     so Frida / external agents can write the same layout
 //!   - Software response-edge provider as practical hybrid for remote targets
-//!   - Minimal deps (only existing libc)
+//!   - Minimal deps (only existing libc on Linux)
+//!
+//! Phase 1 (2026-08-13): SHM creation now goes through `crate::platform`.
 
 pub mod provider;
 pub mod null;
