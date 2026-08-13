@@ -1,15 +1,64 @@
 //! NEXSIZ – Protocol-Aware Integrity Repair
-//! Author  : Revana
-//! Date    : 05/08/2026
 //!
-//! High-quality integrity repair that keeps mutated messages valid enough
-//! to reach deep protocol states. Supports:
-//!   - Semantic field repair (Length / Checksum typed fields)
-//!   - HTTP Content-Length + header/body reconstruction
-//!   - Text-protocol CRLF normalization (FTP / SMTP)
-//!   - Binary length-prefix heuristics
-//!   - Multiple checksum algorithms (additive, XOR, CRC16, CRC32)
-
+//! Author  : Revana
+//! Date    : 13/08/2026
+//! Module  : nexsiz::src::input::integrity
+//!
+//! Purpose:
+//!   Provide deterministic, protocol-aware repair and normalization routines for
+//!   mutated testcases so that generated inputs remain sufficiently valid to
+//!   traverse deep protocol state-machines. This module focuses on length and
+//!   checksum reconciliation, HTTP/SMTP/FTP text-normalization, and common
+//!   binary length-prefix heuristics used across network protocols.
+//!
+//! Responsibilities:
+//!   - Compute a variety of checksum algorithms (additive, XOR, CRC16, CRC32,
+//!     one's-complement) with clearly documented bit/endianness semantics.
+//!   - Repair typed Message fields marked as Length or Checksum so semantic
+//!     structure (length prefixes, checksums covering payloads) remains correct
+//!     after mutation operations.
+//!   - Perform protocol-specific raw-byte fixes for common application protocols:
+//!       * HTTP: insert/adjust Content-Length, normalize header CRLFs, respect
+//!         Transfer-Encoding: chunked when present.
+//!       * SMTP: ensure DATA terminator CRLF.CRLF where applicable.
+//!       * FTP: normalize logical lines to CRLF termination.
+//!       * Generic/Binary: heuristic length-prefix rewrite for 1/2/4-byte widths.
+//!
+//! Key concepts & invariants:
+//!   - Field semantics are driven by FieldType: Length fields encode the size of
+//!     subsequent payload; Checksum fields cover all other fields except
+//!     themselves. Implementations must preserve endianness and width.
+//!   - Checksum functions return native-width integers; callers are responsible
+//!     for writing the canonical byte representation into target buffers.
+//!   - repair_message*() operates in two phases: (1) recalculate length fields,
+//!     then (2) compute and write checksums. This ordering reduces checksum
+//!     churn when lengths change.
+//!
+//! API overview (public behavior):
+//!   - checksum_additive / checksum_xor / crc16_ccitt / crc32_ieee /
+///!     checksum_ones_complement
+//!   - write_length(buf, value, endian), write_checksum(buf, value, endian)
+//!   - repair_message / repair_message_ex (semantic field repair)
+//!   - repair_http_raw / repair_smtp_raw / repair_ftp_raw / repair_binary_length_prefix
+//!   - prepare_for_send(tc, protocol) — high-level entrypoint that applies both
+//!     semantic and protocol-specific raw repairs before transmission.
+//!
+//! Performance & correctness notes:
+//!   - CRC implementations use simple bitwise algorithms (no table acceleration).
+//!    For high-throughput use-cases consider table-driven or hardware-accelerated
+//!     implementations (performance vs. clarity trade-off).
+//!   - String/UTF-8 conversions are used only for header parsing and normalization;
+//!     binary-safe paths operate on raw bytes to avoid lossy transforms.
+//!   - Heuristics (e.g., selecting which checksum algorithm to auto-apply based
+//!     on field width) are conservative but tunable — validate against protocol
+//!     specifications for production fuzz targets.
+//!
+//! Testing & maintenance:
+//!   - Unit tests exercise known vectors (CRC-16/CRC-32), Content-Length fixes,
+//!     CRLF normalization, and multi-field content-length rewriting.
+//!   - When adding new protocol rules, document assumptions (separator bytes,
+//!     canonical header forms) and add targeted unit tests.
+    
 use crate::common::types::*;
 
 // ── Checksum algorithms ──────────────────────────────────────────────────────
