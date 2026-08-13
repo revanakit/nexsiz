@@ -8,8 +8,8 @@
 //!
 //! Overview
 //! Provides a 64 KiB edge map with per-edge hit-count buckets for tracking code execution
-//! paths during fuzzing. Supports both in-process and POSIX shared-memory (SHM) modes for
-//! seamless integration with external instrumentation agents (e.g., Frida, LD_PRELOAD).
+//! paths during fuzzing. Supports both in-process and platform shared-memory modes for
+//! seamless integration with external instrumentation agents (e.g., Frida).
 //!
 //! Architecture
 //!
@@ -17,9 +17,9 @@
 //! - In-Process Mode (default): Standalone edge tracking when SHM is unavailable.
 //!   Suitable for statically instrumented targets or when external agents are not needed.
 //!
-//! - POSIX SHM Mode (Linux): Attaches to a shared-memory region written by external
-//!   instrumentation agents. Provides unified feedback by merging remote hits with local
-//!   synthetic edges on each collection cycle.
+//! - Shared-Memory Mode: Attaches to a platform shared-memory region written by external
+//!   instrumentation agents (POSIX SHM on Linux, File Mapping on Windows). Provides unified
+//!   feedback by merging remote hits with local synthetic edges on each collection cycle.
 //!
 //! Feedback Generation
 //! - SHM Synchronization: External agent hits are pulled into the in-process map at
@@ -49,7 +49,7 @@
 use crate::common::types::ExecutionResult;
 use crate::common::utils::{hash_bytes, hash_combine};
 use crate::coverage::provider::{CoverageFeedback, CoverageProvider, MAP_SIZE};
-use crate::coverage::shm::ShmMap;
+use crate::platform::{self, SharedMemory};
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
 
@@ -61,8 +61,8 @@ pub struct SharedMapCoverage {
     virgin: Mutex<Vec<u8>>,
     /// Running total of unique edges ever seen.
     total_edges: AtomicU64,
-    /// Optional POSIX shared-memory region (external agent writes here).
-    shm: Option<ShmMap>,
+    /// Optional platform shared-memory region (external agent writes here).
+    shm: Option<Box<dyn SharedMemory>>,
     /// Whether to merge synthetic response edges (always true for hybrid).
     inject_response: bool,
 }
@@ -72,13 +72,13 @@ impl SharedMapCoverage {
         Self::with_shm_id(None)
     }
 
-    /// Create with optional SHM id (`None` → try default `/nexsiz-cov`).
+    /// Create with optional SHM id (`None` → try default region).
     /// If SHM open fails, falls back to pure in-process map (still functional).
     pub fn with_shm_id(id: Option<&str>) -> Self {
         let mut current = Vec::with_capacity(MAP_SIZE);
         current.resize_with(MAP_SIZE, || AtomicU8::new(0));
 
-        let shm = match ShmMap::open(id) {
+        let shm = match platform::current().create_coverage_map(id) {
             Ok(m) => {
                 eprintln!("[nexsiz] coverage SHM attached: {}", m.name());
                 Some(m)
