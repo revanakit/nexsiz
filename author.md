@@ -7,9 +7,9 @@
 /_/|_/___/_/|_/___/___/ /___/
 ```
 
-**AUTHOR:** Revana
+**AUTHOR:** `Revana`
 
-**DOCUMENT:** revanakit.github.io/nexsiz-blogs/
+**DOCUMENT:** `revanakit.github.io/nexsiz-blogs/`
 
-**PROJECT STARTED ON:** 07/07/2026
+**PROJECT STARTED ON:** `07/07/2026`
 
