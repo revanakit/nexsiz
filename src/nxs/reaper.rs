@@ -6,25 +6,52 @@
 //!
 //! Asynchronous NXS exit-code reaper.
 //!
-//! Keeps the fuzzing hot-path non-blocking while still honouring the design
-//! requirement to observe exit codes and escalate on exit 2 (secondary finding).
+//! Purpose
+//! - Background, asynchronous reaper that observes exit codes of externally spawned
+//!   NXS (next-stage) analysis processes without blocking the fuzzer hot path.
 //!
-//! Architecture:
-//!   - Spawn returns a `Child` immediately.
-//!   - Child is handed to a background reaper thread via an unbounded channel.
-//!   - Reaper polls with `try_wait` (no blocking wait on the fuzzer threads).
-//!   - On exit:
-//!       * logs the code
-//!       * if code == 2 → records a secondary finding (JSONL + atomic counter)
+//! Responsibilities
+//! - Accept ownership of freshly spawned Child processes and associated metadata.
+//! - Poll child processes using non-blocking try_wait and react to process termination.
+//! - Emit structured diagnostics for observed exit codes and record "secondary findings"
+//!?  when an NXS returns the CONTRACT-specified code (exit 2).
+//! - Persist a minimal JSONL record for secondary findings under {output_dir}/nxs-findings/secondary.jsonl.
 //!
-//! Exit-code mapping:
-//!   - Normal exit → `status.code()` (Unix and Windows)
-//!   - Unix signal death → mapped to exit 4 (Interrupted / cancelled per CONTRACT)
-//!   - Windows: no POSIX signals; if `status.code()` is None (rare, e.g. still
-//!     running edge cases already filtered by try_wait) → treat as exit 1
+//! Key design points
+//! - Lazy, single-threaded background reaper: started once on first submission via a channel (OnceLock + mpsc).
+//! - Non-blocking polling loop: reaper uses try_wait + a short sleep to avoid blocking or busy-waiting the engine.
+//! - Process-local behavior: no cross-process coordination or external state; safe to use inside a single fuzzer process.
+//! - Lightweight metadata tracked per-child: nxs_id, event, crash_id, optional out_dir, campaign output dir, start time, and the Child handle.
 //!
-//! The reaper is started once (lazy) when the first NXS is submitted.
-//! Process-local only; no shared state across processes.
+//! Exit-code semantics & platform notes
+//! - The module maps process termination to an integer "exit code" for downstream consumers:
+//!   • Normal exit → status.code() (Unix & Windows).
+//!   • Unix signal termination → mapped to exit 4 (Interrupted / cancelled per CONTRACT).
+//!   • If status.code() is None on non-Unix platforms (unexpected), treat as operational failure (map to 1).
+//! - CONTRACT: exit code 2 indicates a secondary finding — increment a campaign-wide atomic counter
+//!   and append a JSONL record with timestamp, nxs_id, event, crash_id, exit_code, elapsed_ms, kind="secondary".
+//!
+//! Fault tolerance & hygiene
+//! - All I/O and minor failures are logged to stderr; the reaper never panics on common runtime errors.
+//! - The reaper drains submissions on channel disconnect and performs a final graceful collection pass with a short deadline.
+//! - Writes a tiny "exit_code" sidecar file next to the NXS out_dir when provided; failures to write sidecars do not abort reaper processing.
+//!
+//! Observability & metrics
+//! - Exposes secondary_count() snapshot (AtomicU64) for status and final campaign reporting.
+//! - Always logs observed exit codes and notable events (signal termination, write failures) to stderr to aid debugging.
+//!
+//! Performance & safety considerations
+//! - Poll interval tuned to a modest value (250ms) to balance latency and CPU usage — adjust if needed for extreme workloads.
+//! - Uses Instant for measuring elapsed durations to avoid wall-clock jumps.
+//! - Channel is unbounded; callers should avoid unbounded submission rates that vastly outstrip the reaper's ability to observe exits.
+//!
+//! Testing recommendations
+//! - Unit tests for exit-code mapping (normal, signal, None cases) across platforms.
+//! - Integration tests that submit mock Child processes and validate secondary.jsonl contents and the atomic counter.
+//! - Stress tests that verify graceful drain on channel disconnect and bounded memory/CPU under load.
+//!
+//! References
+//! - Contract / canonical schema: nxs/CONTRACT.md (authoritative on exit-code semantics and JSONL fields).
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
