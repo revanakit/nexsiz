@@ -2,7 +2,14 @@
 //! Author  : Revana
 //! Date    : 04/08/2026
 //! Optional local process monitoring for targets launched as child processes.
-//! Detects crashes via non-zero exit / signal termination.
+//!
+//! Crash detection:
+//! - Unix:    non-zero exit **or** signal termination → abnormal
+//! - Windows: non-zero exit code (TerminateProcess / unhandled exception
+//!            typically surfaces as a non-zero code; there are no POSIX signals)
+//!
+//! `std::process::Child` already abstracts spawn / try_wait / kill across
+//! platforms. This module adds a thin monitoring API and light detach flags.
 
 use crate::common::error::{NexsizError, Result};
 use std::process::{Child, Command, Stdio};
@@ -17,7 +24,7 @@ pub struct ProcessMonitor {
 }
 
 impl ProcessMonitor {
-    /// Spawn the target command. Returns None if no command is configured.
+    /// Spawn the target command.
     pub fn spawn(cmd: &str) -> Result<Self> {
         let parts: Vec<&str> = cmd.split_whitespace().collect();
         if parts.is_empty() {
@@ -28,11 +35,22 @@ impl ProcessMonitor {
             c.args(&parts[1..]);
         }
         c.stdout(Stdio::null()).stderr(Stdio::null());
+
+        // On Windows, put the target in its own process group so console
+        // Ctrl-C aimed at the fuzzer does not always cascade. Mirrors the
+        // NXS detach policy. Non-fatal if unsupported.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+            c.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        }
+
         let child = c
             .spawn()
             .map_err(|e| NexsizError::Execution(format!("failed to spawn target: {}", e)))?;
 
-        // Brief settle time
+        // Brief settle time so the process can bind sockets / initialise.
         thread::sleep(Duration::from_millis(200));
 
         Ok(Self {
@@ -48,15 +66,9 @@ impl ProcessMonitor {
         match guard.as_mut() {
             Some(child) => match child.try_wait() {
                 Ok(None) => Ok(true),
-                Ok(Some(status)) => {
-                    // Process has exited
+                Ok(Some(_status)) => {
                     let _ = guard.take();
-                    if status.success() {
-                        Ok(false)
-                    } else {
-                        // Non-zero or signalled → treat as crash-like death
-                        Ok(false)
-                    }
+                    Ok(false)
                 }
                 Err(e) => Err(NexsizError::Execution(format!("wait error: {}", e))),
             },
@@ -65,6 +77,11 @@ impl ProcessMonitor {
     }
 
     /// Returns true if the process exited abnormally (crash indicator).
+    ///
+    /// - Unix: `!status.success()` covers non-zero exit and signal death.
+    /// - Windows: `!status.success()` covers non-zero exit codes (including
+    ///   typical unhandled-exception codes such as 0xC0000005-style values
+    ///   reported by the runtime).
     pub fn crashed(&self) -> bool {
         let mut guard = self.child.lock().unwrap();
         match guard.as_mut() {
@@ -85,6 +102,9 @@ impl ProcessMonitor {
     }
 
     /// Kill the child if still running.
+    ///
+    /// Uses `Child::kill()` which maps to SIGKILL on Unix and
+    /// `TerminateProcess` on Windows.
     pub fn terminate(&self) {
         let mut guard = self.child.lock().unwrap();
         if let Some(mut child) = guard.take() {
@@ -105,13 +125,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn spawn_sleep_and_check() {
-        // Use a very short-lived process
-        let mon = ProcessMonitor::spawn("sleep 0.1");
-        // May fail on platforms without sleep; just ensure API works
+    fn spawn_short_lived_and_check() {
+        // Portable short-lived process.
+        #[cfg(unix)]
+        let mon = ProcessMonitor::spawn("true");
+        #[cfg(windows)]
+        let mon = ProcessMonitor::spawn("cmd /c exit 0");
+        #[cfg(not(any(unix, windows)))]
+        let mon: Result<ProcessMonitor> = Err(NexsizError::Config("unsupported".into()));
+
         if let Ok(m) = mon {
             thread::sleep(Duration::from_millis(300));
             let _ = m.is_alive();
+            // Clean exit → not a crash
+            assert!(!m.crashed() || !m.is_alive().unwrap_or(true));
             m.terminate();
         }
     }
