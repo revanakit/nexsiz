@@ -1,6 +1,6 @@
 # Nexsiz on Windows — Operator Guide
 
-**Status**: Phase 0–4 complete (core port). CI packaging is Phase 5.
+**Status**: Phase 0–4 complete (core port + Frida agent). CI packaging is Phase 5.
 
 ---
 
@@ -10,13 +10,27 @@
 # Build (MSVC toolchain recommended)
 cargo build --release
 
-# Minimal HTTP-ish campaign against a local service
+# Minimal campaign against a local service
 .\target\release\nexsiz.exe -h 127.0.0.1 -p 80 -m generic -s seeds\generic -o out\win -v
 
-# With grey-box map coverage (in-process synthetic edges always work;
-# external Frida hits require a Windows-aware agent)
+# Grey-box map + Frida (same script works on Windows and Linux)
+$env:NEXSIZ_SHM_ID = "demo"
+frida -l agents\frida\nexsiz_cov.js -f .\mydaemon.exe
+# other terminal:
 .\target\release\nexsiz.exe -h 127.0.0.1 -p 21 -m ftp -C map --shm demo -v
 ```
+
+---
+
+## Snapshot backends
+
+| Backend | Windows | Notes |
+|---------|---------|-------|
+| `process` (default with `-Z`) | ✅ | Kill + respawn target via `target_cmd` |
+| `criu` | ❌ | **Linux-only** — CRIU uses Linux kernel C/R APIs |
+| `null` | ✅ | No snapshot |
+
+On Windows always use `--snapshot-backend process` (or omit; it is the default when `-Z` is set).
 
 ---
 
@@ -27,9 +41,9 @@ cargo build --release
 | Linux | `/nexsiz-cov` | `/nexsiz-cov-<id>` |
 | Windows | `Local\nexsiz-cov` | `Local\nexsiz-cov-<id>` |
 
-Pass the same id via `--shm <id>` / `NEXSIZ_SHM_ID`. The fuzzer creates a pagefile-backed File Mapping; Frida agents must open the matching `Local\...` name.
+Pass the same id via `--shm <id>` / `NEXSIZ_SHM_ID`.
 
-> The stock `agents/frida/nexsiz_cov.js` targets POSIX SHM. Until a Windows agent variant is published, `-C map` still provides hybrid synthetic response edges; external Stalker hits need the Windows agent.
+The Frida agent (`agents/frida/nexsiz_cov.js`) is **cross-platform**: it detects `Process.platform` and opens POSIX SHM on Linux or `OpenFileMappingW` / `MapViewOfFile` on Windows.
 
 ---
 
@@ -51,8 +65,6 @@ $env:NEXSIZ_NXS_PATH = "C:\tools\nxs\bin;D:\lab\nxs\bin"
 
 ## Output layout
 
-Created under `-o` / `output_dir` via `Path::join` (Windows-correct separators):
-
 ```
 output\
   nexsiz.log
@@ -70,14 +82,8 @@ output\
 ## Process & crash behaviour
 
 - Target and NXS children use `CREATE_NEW_PROCESS_GROUP` so console Ctrl-C on the fuzzer does not always cascade.
-- Crash detection uses non-zero exit codes (`Child::kill` → `TerminateProcess`).
-- There are no POSIX signals; the reaper maps missing codes to operational exit `1`. Exit `2` remains the secondary-finding contract.
-
----
-
-## Connection reuse
-
-TCP/UDP connectors use `std::net` only — fully portable. Reuse policy is protocol-code based and identical on Windows.
+- Crash detection uses non-zero exit codes (`TerminateProcess`).
+- No POSIX signals; reaper maps missing codes to exit `1`. Exit `2` = secondary finding.
 
 ---
 
@@ -86,22 +92,23 @@ TCP/UDP connectors use `std::net` only — fully portable. Reuse policy is proto
 | Feature | Windows status |
 |---------|----------------|
 | Grey-box SHM map | ✅ File Mapping |
-| Frida external agent | ⚠️ Needs Windows agent script |
+| Frida external agent | ✅ Cross-platform `nexsiz_cov.js` |
 | Process monitor / NXS | ✅ |
-| CRIU snapshot | ❌ Linux-only (`--features criu`) |
+| CRIU snapshot | ❌ Linux-only |
 | Process snapshot backend | ✅ kill+respawn |
-| Python RPC (`-Y` Unix socket) | ⚠️ Unix domain sockets; prefer Linux or a future named-pipe transport |
-| `libafl` feature | Optional; LibAFL itself supports Windows |
+| Python RPC (`-Y` Unix socket) | ⚠️ Prefer Linux; named-pipe transport later |
+| `libafl` feature | Optional |
 
 ---
 
 ## Smoke checklist
 
 1. `cargo build --release` on `x86_64-pc-windows-msvc`
-2. Campaign against a local TCP service with `-m generic` or `-m http`
-3. Confirm `out\...\crashes` / `nexsiz.log` are created
-4. Optional: `-C map --shm demo` and verify log line `coverage SHM attached: Local\nexsiz-cov-demo`
-5. Optional: `--nxs-list` with a Windows `NEXSIZ_NXS_PATH`
+2. Campaign with `-m generic` or `-m http`
+3. Confirm `out\...\crashes` / `nexsiz.log`
+4. `-C map --shm demo` → log: `coverage SHM attached: Local\nexsiz-cov-demo`
+5. Frida agent → log: `SHM attached (Windows): Local\nexsiz-cov-demo`
+6. Optional: `--nxs-list` with Windows `NEXSIZ_NXS_PATH`
 
 ---
 
