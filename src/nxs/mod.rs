@@ -5,19 +5,56 @@
 //! Module  : nexsiz::src::nxs::mod
 //!
 //! NXS integration layer — meta JSON writer + non-blocking existence-script spawn
-//! + asynchronous exit-code observation.
 //!
-//! Opt-in via `--nxs` / `NEXSIZ_NXS`. When disabled the module is never entered and
-//! the engine retains zero behavioural change.
+//! Purpose
+//! - Integration layer that bridges the fuzzing engine with external NXS (next-stage)
+//!   analysis binaries. Coordinates metadata emission, NXS discovery/resolution,
+//!   non-blocking process spawn, and asynchronous exit-code observation.
 //!
-//! Contract: nxs/CONTRACT.md
+//! Responsibilities
+//! - Produce a compact JSON metadata file for each classified engine event (see nxs/CONTRACT.md §3).
+//! - Resolve configured NXS specifications (search path + categories) into executable commands.
+//! - Enforce configurable rate limits and deduplication to avoid flooding downstream tools.
+//! - Spawn resolved NXS processes non-blocking and hand Child handles to a background reaper
+//!   that observes exit codes without blocking the fuzzer hot path.
+//! - Record secondary findings (exit-code → classification) as reported by the reaper.
 //!
-//! Architecture (modular, pure stdlib):
-//!   meta    — hand-rolled JSON matching the forward-compatible schema
-//!   resolve — categories.toml + search-path priority → executable paths
-//!   spawn   — non-blocking `Command::spawn` (returns Child)
-//!   reaper  — background thread that observes exit codes & records secondary findings
-//!   rate    — per-crash cooldown + per-event / total caps
+//! Activation & configuration
+//! - Opt-in via CLI flag `--nxs` or environment variable `NEXSIZ_NXS`.
+//! - Controlled by `cfg.nxs.*` settings (enabled, events list, cooldown_secs, max_per_event, max_total).
+//! - Uses `cfg.target` and `cfg.output_dir` to render per-event and per-NXS output directories.
+//!
+//! Behavior & semantics
+//! - Called from engine::handle_result after an event is classified:
+//!     1) Write {output_dir}/nxs-meta/{event}_{id}.json using meta::write_meta.
+//!     2) Resolve the set of NXS specs for the event via resolve::resolve_nxs_list.
+//!     3) Rate-check each spec (rate::check_and_record) and skip/stop according to decision.
+//!     4) For allowed specs, perform a non-blocking spawn (spawn::spawn_nxs) and submit the Child to
+//!        reaper::submit for asynchronous exit-code handling.
+//! - Exit code 2 from an NXS child is treated as a secondary finding by the reaper.
+//! - Writer omits optional/empty fields to remain forward-compatible with newer schema versions.
+//!
+//! Error handling & observability
+//! - I/O and resolution failures are logged to stderr with contextual messages and do not panic the engine.
+//! - Verbose mode (`cfg.verbose`) emits rate-limit, spawn, and reaper handoff diagnostics.
+//!
+//! Concurrency & safety
+//! - This module does not perform inter-process synchronization; callers must avoid concurrent writes
+//!   to the same output paths or provide external locking where necessary.
+//! - Spawning is non-blocking; the reaper runs independently to avoid impacting fuzzing throughput.
+//!
+//! Rate limiting & deduplication
+//! - Per-event and global caps are applied, plus a per-spec cooldown window to prevent repeated invocations.
+//! - When per-event cap is reached the loop breaks; when global cap is reached the function returns early.
+//!
+//! Testing recommendations
+//! - Unit-test outcome mapping (outcome_str) across ExecutionResult permutations.
+//! - Integration tests that simulate resolution failures, spawn failures, and verify reaper handoff.
+//! - Parse produced JSON with a robust JSON parser in tests to assert valid output and proper escaping.
+//!
+//! Contract & references
+//! - Canonical schema and expectations: nxs/CONTRACT.md (authoritative).
+//! - See meta.rs, resolve.rs, spawn.rs, reaper.rs, and rate.rs for implementation details.
 
 pub mod meta;
 pub mod rate;
