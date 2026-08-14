@@ -6,6 +6,10 @@
 //!
 //! Stdio is null (or inherited only when verbose) so a noisy NXS cannot
 //! fill pipes and stall the engine.
+//!
+//! Detach semantics:
+//! - Unix:    setsid() via pre_exec → new session
+//! - Windows: CREATE_NEW_PROCESS_GROUP → independent process group
 
 use crate::nxs::resolve::NxsSpec;
 use std::fs;
@@ -67,8 +71,9 @@ pub fn spawn_nxs(
             .stderr(Stdio::null());
     }
 
-    // On Unix, start a new process group so the child survives fuzzer SIGINT
-    // unless the operator explicitly wants joint teardown (future flag).
+    // Detach from the fuzzer's process group / console so Ctrl-C on the
+    // fuzzer does not immediately tear down in-flight NXS actors.
+    // Operator can still kill the tree explicitly if desired (future flag).
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -81,6 +86,15 @@ pub fn spawn_nxs(
                 Ok(())
             });
         }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NEW_PROCESS_GROUP (0x200): child gets its own process group
+        // and does not receive console Ctrl-C events aimed at the parent.
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
     }
 
     match cmd.spawn() {
