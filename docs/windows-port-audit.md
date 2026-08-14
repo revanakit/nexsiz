@@ -2,7 +2,7 @@
 
 **Date**: 2026-08-14  
 **Author**: Revana / Grok  
-**Status**: Phase 0–4 ✅  ·  Phase 5 pending  
+**Status**: Phase 0–5 ✅  
 **Operator guide**: [windows.md](windows.md)
 
 ---
@@ -16,7 +16,7 @@
 | 2 | Windows File Mapping | ✅ |
 | 3 | Process / crash detection | ✅ |
 | 4 | Integration & edge cases | ✅ |
-| 5 | CI matrix + packaging | Pending (`build.yml` locked) |
+| 5 | CI matrix + packaging | ✅ |
 
 ---
 
@@ -35,12 +35,24 @@ Connection reuse / TCP / UDP were already portable (`std::net`) — no code chan
 
 ---
 
-## Remaining (Phase 5)
+## Phase 5 changes
 
-- Unlock / extend `.github/workflows/build.yml` with `windows-latest`
-- Release asset: portable zip of `nexsiz.exe`
-- Optional: Windows Frida agent script
-- Optional: named-pipe RPC transport
+| Item | Detail |
+|------|--------|
+| `libc` dependency | Moved to `[target.'cfg(unix)'.dependencies]` — MSVC builds no longer pull POSIX crate |
+| Workflow | `.github/workflows/build.yml` activated (was `.locked`) |
+| Windows jobs | `build-windows-default`, `-libafl`, `-json-model`, `-libafl-json` on `windows-latest` (x86_64-pc-windows-msvc) |
+| Packaging | `package-windows` produces `nexsiz-windows-x86_64-*-version-(0.1.0).zip` with `nexsiz.exe` + Frida agent + operator notes |
+| Linux packaging | Unchanged; still ships NXS prebuilts |
+| NXS on Windows | Not prebuilt in CI (POSIX scripts); operator builds or places `nxs-*.exe` under `nxs\bin` / `NEXSIZ_NXS_PATH` |
+
+Artifacts (Actions):
+
+- `nexsiz-windows-x86_64-default`
+- `nexsiz-windows-x86_64-libafl`
+- `nexsiz-windows-x86_64-json-model`
+- `nexsiz-windows-x86_64-libafl-json`
+- `nexsiz-release-packages-windows` (zip archives)
 
 ---
 
@@ -54,3 +66,11 @@ SharedMapCoverage → platform::current().create_coverage_map()
 NXS / target spawn → CREATE_NEW_PROCESS_GROUP (Windows)
                   → setsid() (Unix)
 ```
+
+---
+
+## Optional follow-ups (post-Phase 5)
+
+- Windows Frida agent packaging notes (already cross-platform JS)
+- Named-pipe RPC transport for `-Y` on Windows
+- Prebuilt NXS `.exe` matrix (if operator demand rises)
