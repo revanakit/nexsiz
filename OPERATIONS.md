@@ -1,6 +1,6 @@
 # Operations Guide — Nexsiz
 
-Practical runbook for red-team / APT operators running Nexsiz campaigns.
+Practical runbook for operators running Nexsiz campaigns.
 
 This document assumes you already understand the high-level design (see `README.md`).
 It focuses on **repeatable, safe, high-signal** operational practice.
