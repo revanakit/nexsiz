@@ -2,8 +2,10 @@
 //!
 //! Priority:
 //!   1. Absolute path in the expression
-//!   2. NEXSIZ_NXS_PATH / cfg.nxs.path (colon-separated)
-//!   3. ~/.nexsiz/nxs/bin/
+//!   2. NEXSIZ_NXS_PATH / cfg.nxs.path
+//!      - Unix:    colon-separated
+//!      - Windows: semicolon-separated (colon would break `C:\...`)
+//!   3. ~/.nexsiz/nxs/bin/  (HOME, or USERPROFILE on Windows)
 //!   4. ./nxs/bin/ (cwd)
 //!   5. <exe_dir>/../nxs/bin/ and <exe_dir>/nxs/bin/
 
@@ -98,9 +100,9 @@ fn expand_expression_unfiltered(expr: &str) -> Result<Vec<String>, String> {
 /// Expand a set expression into concrete NXS ids.
 ///
 /// Supported forms:
-///   - category name: "default", "crash", "hang", "safe", "intrusive", "external"
-///   - concrete id:   "crash/auto-repro"
-///   - comma list:    "default,hang" or "crash/auto-repro,crash/save-notify"
+//!   - category name: "default", "crash", "hang", "safe", "intrusive", "external"
+//!   - concrete id:   "crash/auto-repro"
+//!   - comma list:    "default,hang" or "crash/auto-repro,crash/save-notify"
 fn expand_expression(expr: &str, event: &str) -> Result<Vec<String>, String> {
     let cats = load_categories();
     let mut ids = Vec::new();
@@ -143,38 +145,65 @@ fn expand_expression(expr: &str, event: &str) -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
+/// Split a search-path string using the platform path separator.
+///
+/// - Unix: `:` (classic PATH style)
+/// - Windows: `;` — using `:` would incorrectly split `C:\tools\nxs`
+fn split_search_paths(p: &str) -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        p.split(';')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect()
+    }
+    #[cfg(not(windows))]
+    {
+        p.split(':')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect()
+    }
+}
+
 fn build_search_path(cfg: &Config) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     // 2. cfg / env
     if let Some(ref p) = cfg.nxs.path {
-        for d in p.split(':').filter(|s| !s.is_empty()) {
-            dirs.push(PathBuf::from(d));
-        }
+        dirs.extend(split_search_paths(p));
     }
     if let Ok(env_p) = env::var("NEXSIZ_NXS_PATH") {
-        for d in env_p.split(':').filter(|s| !s.is_empty()) {
-            dirs.push(PathBuf::from(d));
-        }
+        dirs.extend(split_search_paths(&env_p));
     }
 
-    // 3. ~/.nexsiz/nxs/bin/
-    if let Some(home) = env::var_os("HOME") {
-        dirs.push(PathBuf::from(home).join(".nexsiz/nxs/bin"));
+    // 3. ~/.nexsiz/nxs/bin/  (HOME on Unix, USERPROFILE fallback on Windows)
+    let home = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE"));
+    if let Some(home) = home {
+        dirs.push(PathBuf::from(home).join(".nexsiz").join("nxs").join("bin"));
     }
 
     // 4. ./nxs/bin/
-    dirs.push(PathBuf::from("nxs/bin"));
-    dirs.push(PathBuf::from("./nxs/bin"));
+    dirs.push(PathBuf::from("nxs").join("bin"));
+    dirs.push(PathBuf::from(".").join("nxs").join("bin"));
 
     // 5. relative to executable
     if let Ok(exe) = env::current_exe() {
         if let Some(parent) = exe.parent() {
-            dirs.push(parent.join("nxs/bin"));
-            dirs.push(parent.join("../nxs/bin"));
+            dirs.push(parent.join("nxs").join("bin"));
+            dirs.push(parent.join("..").join("nxs").join("bin"));
             // source-tree layout when running from target/release
-            dirs.push(parent.join("../../nxs/bin"));
-            dirs.push(parent.join("../../../nxs/bin"));
+            dirs.push(parent.join("..").join("..").join("nxs").join("bin"));
+            dirs.push(
+                parent
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("nxs")
+                    .join("bin"),
+            );
         }
     }
 
@@ -182,7 +211,8 @@ fn build_search_path(cfg: &Config) -> Vec<PathBuf> {
 }
 
 /// Locate an executable for the given id.
-/// Tries: absolute path, `nxs-<name>`, `<name>`, `nxs-<category>-<name>`.
+/// Tries: absolute path, `nxs-<name>`, `<name>`, `nxs-<category>-<name>`,
+/// and on Windows the same names with `.exe` / `.cmd` / `.bat`.
 fn locate(id: &str, search: &[PathBuf]) -> Option<PathBuf> {
     // absolute?
     let p = Path::new(id);
@@ -191,11 +221,27 @@ fn locate(id: &str, search: &[PathBuf]) -> Option<PathBuf> {
     }
 
     let name = id.rsplit('/').next().unwrap_or(id);
-    let candidates = [
+    let mut candidates = vec![
         format!("nxs-{}", name),
         name.to_string(),
         format!("nxs-{}", id.replace('/', "-")),
     ];
+
+    #[cfg(windows)]
+    {
+        // Windows executables usually carry an extension.
+        let extra: Vec<String> = candidates
+            .iter()
+            .flat_map(|c| {
+                [
+                    format!("{}.exe", c),
+                    format!("{}.cmd", c),
+                    format!("{}.bat", c),
+                ]
+            })
+            .collect();
+        candidates.extend(extra);
+    }
 
     for dir in search {
         for c in &candidates {
@@ -218,12 +264,25 @@ fn is_executable(path: &Path) -> bool {
         if let Ok(meta) = path.metadata() {
             return meta.permissions().mode() & 0o111 != 0;
         }
+        return false;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        return true; // best-effort on non-unix
+        // On Windows, presence of a regular file with a known executable
+        // extension (or any file if extensionless was explicitly requested)
+        // is treated as executable. CreateProcess will reject non-executables.
+        match path.extension().and_then(|e| e.to_str()) {
+            Some(ext) => {
+                let ext = ext.to_ascii_lowercase();
+                matches!(ext.as_str(), "exe" | "cmd" | "bat" | "com")
+            }
+            None => true, // allow extensionless if operator pointed at it explicitly
+        }
     }
-    false
+    #[cfg(not(any(unix, windows)))]
+    {
+        true
+    }
 }
 
 /// Minimal categories.toml parser (no external crate).
@@ -260,15 +319,28 @@ fn load_categories() -> HashMap<String, Vec<String>> {
 
     // overlay from file if present
     let candidates = [
-        PathBuf::from("nxs/categories.toml"),
-        PathBuf::from("./nxs/categories.toml"),
+        PathBuf::from("nxs").join("categories.toml"),
+        PathBuf::from(".").join("nxs").join("categories.toml"),
     ];
     let mut extra = Vec::new();
     if let Ok(exe) = env::current_exe() {
         if let Some(parent) = exe.parent() {
-            extra.push(parent.join("../nxs/categories.toml"));
-            extra.push(parent.join("../../nxs/categories.toml"));
-            extra.push(parent.join("../../../nxs/categories.toml"));
+            extra.push(parent.join("..").join("nxs").join("categories.toml"));
+            extra.push(
+                parent
+                    .join("..")
+                    .join("..")
+                    .join("nxs")
+                    .join("categories.toml"),
+            );
+            extra.push(
+                parent
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("nxs")
+                    .join("categories.toml"),
+            );
         }
     }
     for c in candidates.iter().chain(extra.iter()) {
