@@ -397,4 +397,4 @@ Apache License 2.0. Intended for operational use by offensive security teams und
 
 ## Author
 
-[![x](https://img.shields.io/badge/Reva_Clarestya-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/revanakit)
+[![x](https://img.shields.io/badge/Revana-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/revanakit)
