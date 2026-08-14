@@ -1,0 +1,11 @@
+id = "crash/auth-escalation"
+name = "auth-escalation"
+version = "0.1.0"
+categories = ["crash", "intrusive"]
+events = ["crash"]
+description = "Protocol-aware post-anomaly privilege and command escalation probe. After a crash or interesting event, attempts sequences that normally require higher privilege or authenticated state (FTP SITE/RETR sensitive paths, SMTP VRFY/EXPN/MAIL escalation, HTTP privileged paths/methods, MQTT ACL probes, SMB share/command attempts, and generic binary command injection heuristics). Covers all Nexsiz models. Exit 2 when an unauthorized-looking successful transition or elevated response is observed. Intrusive."
+language = "rust"
+entry = "bin/nxs-auth-escalation"
+
+[args]
+# no script-specific required args
