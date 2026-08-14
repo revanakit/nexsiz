@@ -1,15 +1,52 @@
-//! Windows platform implementation.
+//! Windows named file-mapping coverage provider.
 //!
-//! Provides named File Mapping coverage map via CreateFileMappingW /
-//! MapViewOfFile. This is the grey-box coverage path on Windows.
+//! This module provides the Windows-specific PlatformServices implementation
+//! using named file mappings (CreateFileMappingW / MapViewOfFile) as the
+//! backing store for the shared coverage region. This is the grey-box coverage
+//! collection path for Windows targets.
 //!
-//! Naming convention (for Frida / external agents):
-//!   Local\nexsiz-cov          (default)
-//!   Local\nexsiz-cov-<id>     (with campaign id)
+//! Primary responsibilities:
+//! - Create or attach to a named, pagefile-backed file mapping sized to
+//!   COVERAGE_MAP_SIZE bytes.
+//! - Ensure newly-created mappings are zero-initialized prior to use.
+//! - Map the region with read/write access so multiple processes or external
+//!   agents (e.g. Frida) can concurrently read/update the coverage map.
+//! - Export WindowsSharedMemory implementing SharedMemory and WindowsPlatform
+//!   implementing PlatformServices.
 //!
-//! The "Local\\" prefix keeps the object in the current session namespace
-//! (works without elevation). Use Global\\ only when cross-session sharing
-//! is explicitly required (not the default).
+//! Naming and namespace semantics:
+//! - Default object name: `Local\nexsiz-cov`
+//! - Campaign-specific: `Local\nexsiz-cov-<id>`
+//! - The `Local\` prefix places objects in the current session namespace and
+//!   avoids elevation; use `Global\` only when cross-session sharing is
+//!   explicitly required.
+//!
+//! Concurrency and safety model:
+//! - Treat the coverage region as a raw byte array intended for single-byte
+//!   reads/writes. This module intentionally accepts AFL-style races from
+//!   concurrent external writers and does not provide inter-process
+//!   synchronization. Higher-level synchronization, if required, must be
+//!   implemented by the caller or campaign coordinator.
+//! - WindowsSharedMemory is marked Send + Sync because access is limited to
+//!   byte-level operations; callers must observe the concurrency assumptions.
+//!
+//! Lifecycle and cleanup semantics:
+//! - CreateFileMappingW may return ERROR_ALREADY_EXISTS during races — such
+//!   cases are treated as attach-to-existing (race-safe pattern).
+//! - On Drop: UnmapViewOfFile and CloseHandle are invoked to release per-process
+//!   resources. The named kernel object is intentionally NOT destroyed here so
+//!   external agents and subsequent runs can reattach; explicit unlinking must
+//!   be performed by an external controller when permanent cleanup is desired.
+//!
+//! Security and deployment notes:
+//! - Mappings created by this module are pagefile-backed by default (INVALID_HANDLE_VALUE).
+//! - Access control is governed by Windows ACLs; avoid predictable names in
+//!   multi-tenant or untrusted deployments and perform explicit access control
+//!   outside this module when necessary.
+//!
+//! Error handling and diagnostics:
+//! - Windows API failures are converted into PlatformError including GetLastError
+//!   codes to aid operator/developer diagnostics.
 
 use super::{PlatformError, PlatformServices, SharedMemory, COVERAGE_MAP_SIZE};
 use std::ptr;
