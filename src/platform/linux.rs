@@ -1,7 +1,38 @@
-//! Linux platform implementation.
+//! Linux POSIX shared-memory coverage provider.
 //!
-//! Provides POSIX shared-memory coverage map via shm_open / mmap.
-//! This is the production path for grey-box coverage on Linux.
+//! This module implements linux-specific PlatformServices by providing a
+//! POSIX shared-memory backed coverage map using shm_open(3) / ftruncate(2) / mmap(2).
+//! It is the production path for grey-box coverage collection on Linux and other
+//! POSIX-compatible systems that support POSIX shared memory.
+//!
+//! Responsibilities:
+//! - Create or open a named shared memory object sized to COVERAGE_MAP_SIZE.
+//! - Ensure newly-created regions are zero-initialized and sized via ftruncate.
+//! - Map the region with PROT_READ | PROT_WRITE and MAP_SHARED so multiple
+//!   processes can observe and update the coverage map concurrently.
+//! - Expose a LinuxSharedMemory type that implements the SharedMemory trait
+//!   and a LinuxPlatform that implements PlatformServices.
+//!
+//! Concurrency and safety model:
+//! - The coverage region is treated as a raw byte array; callers may perform
+//!   single-byte reads/writes. This code deliberately accepts AFL-style races
+//!   from concurrent external writers and does not provide inter-process
+//!   synchronization. Higher-level synchronization (if required) must be
+//!   provided by the consumer.
+//! - LinuxSharedMemory is marked Send + Sync because access is limited to
+//!   raw byte operations; users must respect the above concurrency assumptions.
+//!
+//! Lifecycle and cleanup semantics:
+//! - On Drop the mapping is munmap(2)ed and the descriptor closed.
+//! - The shared memory object is intentionally NOT shm_unlink(3)'d on Drop so
+//!   other processes or subsequent runs can reattach to the same name. If
+//!   permanent cleanup is desired, unlink must be performed explicitly by an
+//!   external actor.
+//!
+//! Error handling and security:
+//! - System call failures are returned as PlatformError with OS diagnostics.
+//! - When creating shared memory the module uses mode 0o600 (owner read/write)
+//!   to limit access; avoid exposing predictable names in untrusted environments.
 
 use super::{PlatformError, PlatformServices, SharedMemory, COVERAGE_MAP_SIZE};
 use std::ffi::CString;
