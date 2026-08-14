@@ -1,9 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//!---------------------------------
-//! Author  : Revana
-//! Module  : nexsiz::src::lib
-//! --------------------------------
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::lib
 //!
 //! Architecture follows the four-layer design:
 //!   1. Input Construction Layer   - semantic token sequences + hierarchical mutators
