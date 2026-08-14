@@ -1,7 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! Author  : Revana
-//! Date    : 07/08/2026
+//! Date    : 14/08/2026
 //! Files   : nexsiz/src/coverage/mod.rs
 //!
 //! NEXSIZ – Grey-box Coverage / Instrumentation layer
@@ -16,8 +16,6 @@
 //!     so Frida / external agents can write the same layout
 //!   - Software response-edge provider as practical hybrid for remote targets
 //!   - Minimal deps (only existing libc on Linux)
-//!
-//! Phase 1 (2026-08-13): SHM creation now goes through `crate::platform`.
 
 pub mod provider;
 pub mod null;
