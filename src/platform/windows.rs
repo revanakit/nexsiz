@@ -1,3 +1,9 @@
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Author  : Revana
+//! Date    : 14/08/2026
+//! Module  : nexsiz::src::platform::windows 
+//!
 //! Windows named file-mapping coverage provider.
 //!
 //! This module provides the Windows-specific PlatformServices implementation
