@@ -1,9 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//!---------------------------------
-//! Author  : Revana
-//! Module  : nexsiz::src::main
-//! --------------------------------
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::main
 //!
 //! Short description:
 //!   Entry point for Nexsiz. Implements a compact, dependency-free CLI
