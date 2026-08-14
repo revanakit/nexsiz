@@ -49,7 +49,6 @@ pub fn resolve_nxs_list(cfg: &Config, event: &str) -> Result<Vec<NxsSpec>, Strin
 pub fn list_resolved(cfg: &Config) -> Result<Vec<(String, Option<PathBuf>)>, String> {
     let mut seen = Vec::new();
     let mut out = Vec::new();
-    // Union across primary events so category filters do not hide members.
     for event in &["crash", "hang", "interesting"] {
         let ids = expand_expression(&cfg.nxs.set, event)?;
         for id in ids {
@@ -62,7 +61,6 @@ pub fn list_resolved(cfg: &Config) -> Result<Vec<(String, Option<PathBuf>)>, Str
             out.push((id, path));
         }
     }
-    // Also surface pure external / absolute ids even if event filter dropped them.
     if cfg.nxs.set.contains('/') || cfg.nxs.set == "external" {
         let ids = expand_expression_unfiltered(&cfg.nxs.set)?;
         let search = build_search_path(cfg);
@@ -100,16 +98,15 @@ fn expand_expression_unfiltered(expr: &str) -> Result<Vec<String>, String> {
 /// Expand a set expression into concrete NXS ids.
 ///
 /// Supported forms:
-//!   - category name: "default", "crash", "hang", "safe", "intrusive", "external"
-//!   - concrete id:   "crash/auto-repro"
-//!   - comma list:    "default,hang" or "crash/auto-repro,crash/save-notify"
+/// - category name: "default", "crash", "hang", "safe", "intrusive", "external"
+/// - concrete id:   "crash/auto-repro"
+/// - comma list:    "default,hang" or "crash/auto-repro,crash/save-notify"
 fn expand_expression(expr: &str, event: &str) -> Result<Vec<String>, String> {
     let cats = load_categories();
     let mut ids = Vec::new();
 
     for part in expr.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
         if part.contains('/') {
-            // concrete id — only include if it matches the event prefix or is unprefixed
             if part.starts_with(&(event.to_string() + "/")) || !part.contains('/') {
                 ids.push(part.to_string());
             } else if event == "interesting"
@@ -117,13 +114,10 @@ fn expand_expression(expr: &str, event: &str) -> Result<Vec<String>, String> {
                 || event == "new_state"
                 || part.starts_with("external/")
             {
-                // interesting events and external hooks may still apply
                 ids.push(part.to_string());
             }
         } else if let Some(list) = cats.get(part) {
             for id in list {
-                // filter by event: keep ids whose category prefix matches the event,
-                // or that belong to the requested set regardless (operator intent).
                 if id.starts_with(&(event.to_string() + "/"))
                     || part == "default"
                     || part == "safe"
@@ -137,7 +131,6 @@ fn expand_expression(expr: &str, event: &str) -> Result<Vec<String>, String> {
                 }
             }
         } else {
-            // treat bare name as possible concrete id under the current event
             let candidate = format!("{}/{}", event, part);
             ids.push(candidate);
         }
@@ -171,7 +164,6 @@ fn split_search_paths(p: &str) -> Vec<PathBuf> {
 fn build_search_path(cfg: &Config) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
-    // 2. cfg / env
     if let Some(ref p) = cfg.nxs.path {
         dirs.extend(split_search_paths(p));
     }
@@ -179,22 +171,18 @@ fn build_search_path(cfg: &Config) -> Vec<PathBuf> {
         dirs.extend(split_search_paths(&env_p));
     }
 
-    // 3. ~/.nexsiz/nxs/bin/  (HOME on Unix, USERPROFILE fallback on Windows)
     let home = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE"));
     if let Some(home) = home {
         dirs.push(PathBuf::from(home).join(".nexsiz").join("nxs").join("bin"));
     }
 
-    // 4. ./nxs/bin/
     dirs.push(PathBuf::from("nxs").join("bin"));
     dirs.push(PathBuf::from(".").join("nxs").join("bin"));
 
-    // 5. relative to executable
     if let Ok(exe) = env::current_exe() {
         if let Some(parent) = exe.parent() {
             dirs.push(parent.join("nxs").join("bin"));
             dirs.push(parent.join("..").join("nxs").join("bin"));
-            // source-tree layout when running from target/release
             dirs.push(parent.join("..").join("..").join("nxs").join("bin"));
             dirs.push(
                 parent
@@ -214,7 +202,6 @@ fn build_search_path(cfg: &Config) -> Vec<PathBuf> {
 /// Tries: absolute path, `nxs-<name>`, `<name>`, `nxs-<category>-<name>`,
 /// and on Windows the same names with `.exe` / `.cmd` / `.bat`.
 fn locate(id: &str, search: &[PathBuf]) -> Option<PathBuf> {
-    // absolute?
     let p = Path::new(id);
     if p.is_absolute() && is_executable(p) {
         return Some(p.to_path_buf());
@@ -229,7 +216,6 @@ fn locate(id: &str, search: &[PathBuf]) -> Option<PathBuf> {
 
     #[cfg(windows)]
     {
-        // Windows executables usually carry an extension.
         let extra: Vec<String> = candidates
             .iter()
             .flat_map(|c| {
@@ -268,15 +254,12 @@ fn is_executable(path: &Path) -> bool {
     }
     #[cfg(windows)]
     {
-        // On Windows, presence of a regular file with a known executable
-        // extension (or any file if extensionless was explicitly requested)
-        // is treated as executable. CreateProcess will reject non-executables.
         match path.extension().and_then(|e| e.to_str()) {
             Some(ext) => {
                 let ext = ext.to_ascii_lowercase();
                 matches!(ext.as_str(), "exe" | "cmd" | "bat" | "com")
             }
-            None => true, // allow extensionless if operator pointed at it explicitly
+            None => true,
         }
     }
     #[cfg(not(any(unix, windows)))]
@@ -285,12 +268,9 @@ fn is_executable(path: &Path) -> bool {
     }
 }
 
-/// Minimal categories.toml parser (no external crate).
-/// Expects lines like:  key = ["a", "b"]
 fn load_categories() -> HashMap<String, Vec<String>> {
     let mut map = HashMap::new();
 
-    // built-in defaults matching nxs/categories.toml
     map.insert(
         "default".into(),
         vec!["crash/auto-repro".into(), "crash/save-notify".into()],
@@ -317,7 +297,6 @@ fn load_categories() -> HashMap<String, Vec<String>> {
         vec!["external/notify-webhook".into()],
     );
 
-    // overlay from file if present
     let candidates = [
         PathBuf::from("nxs").join("categories.toml"),
         PathBuf::from(".").join("nxs").join("categories.toml"),
