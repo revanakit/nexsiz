@@ -1,6 +1,6 @@
 # Nexsiz on Windows — Operator Guide
 
-**Status**: Phase 0–4 complete (core port + Frida agent). CI packaging is Phase 5.
+**Status**: Phase 0–5 complete (core port + Frida agent + CI packaging).
 
 ---
 
@@ -9,6 +9,10 @@
 ```powershell
 # Build (MSVC toolchain recommended)
 cargo build --release
+
+# Or download from Actions artifacts:
+#   nexsiz-windows-x86_64-default  /  nexsiz-windows-x86_64-libafl
+#   nexsiz-release-packages-windows  (zip with agent + docs)
 
 # Minimal campaign against a local service
 .\target\release\nexsiz.exe -h 127.0.0.1 -p 80 -m generic -s seeds\generic -o out\win -v
@@ -19,6 +23,20 @@ frida -l agents\frida\nexsiz_cov.js -f .\mydaemon.exe
 # other terminal:
 .\target\release\nexsiz.exe -h 127.0.0.1 -p 21 -m ftp -C map --shm demo -v
 ```
+
+---
+
+## CI artifacts (Phase 5)
+
+| Artifact | Contents |
+|----------|----------|
+| `nexsiz-windows-x86_64-default` | `nexsiz.exe` (no LibAFL) |
+| `nexsiz-windows-x86_64-libafl` | `nexsiz.exe` + LibAFL (`-L`) |
+| `nexsiz-windows-x86_64-json-model` | JSON protocol models |
+| `nexsiz-windows-x86_64-libafl-json` | LibAFL + JSON |
+| `nexsiz-release-packages-windows` | Zip archives with `nexsiz.exe`, Frida agent, `docs/windows.md`, notes |
+
+Linux packages continue to ship prebuilt NXS binaries. Windows packages ship the agent and docs; place your own `nxs-*.exe` under `nxs\bin` or set `NEXSIZ_NXS_PATH`.
 
 ---
 
@@ -97,13 +115,14 @@ output\
 | CRIU snapshot | ❌ Linux-only |
 | Process snapshot backend | ✅ kill+respawn |
 | Python RPC (`-Y` Unix socket) | ⚠️ Prefer Linux; named-pipe transport later |
-| `libafl` feature | Optional |
+| `libafl` feature | ✅ Optional (CI builds it) |
+| Official NXS prebuilts in Windows zip | ❌ Build locally or supply your own `.exe` |
 
 ---
 
 ## Smoke checklist
 
-1. `cargo build --release` on `x86_64-pc-windows-msvc`
+1. `cargo build --release` on `x86_64-pc-windows-msvc` **or** download CI artifact
 2. Campaign with `-m generic` or `-m http`
 3. Confirm `out\...\crashes` / `nexsiz.log`
 4. `-C map --shm demo` → log: `coverage SHM attached: Local\nexsiz-cov-demo`
