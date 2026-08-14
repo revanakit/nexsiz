@@ -25,7 +25,7 @@
 use crate::common::error::{NexsizError, Result};
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -354,19 +354,22 @@ impl Config {
         Ok(cfg)
     }
 
+    /// Create the standard campaign output layout.
+    /// Uses `Path::join` so separators are correct on Windows and Unix.
     pub fn ensure_dirs(&self) -> Result<()> {
+        let out = PathBuf::from(&self.output_dir);
         fs::create_dir_all(&self.seed_dir)?;
-        fs::create_dir_all(&self.output_dir)?;
-        fs::create_dir_all(format!("{}/crashes", self.output_dir))?;
-        fs::create_dir_all(format!("{}/hangs", self.output_dir))?;
-        fs::create_dir_all(format!("{}/queue", self.output_dir))?;
+        fs::create_dir_all(&out)?;
+        fs::create_dir_all(out.join("crashes"))?;
+        fs::create_dir_all(out.join("hangs"))?;
+        fs::create_dir_all(out.join("queue"))?;
         if self.nxs.enabled {
-            fs::create_dir_all(format!("{}/nxs-meta", self.output_dir))?;
-            fs::create_dir_all(format!("{}/nxs-out", self.output_dir))?;
-            fs::create_dir_all(format!("{}/nxs-findings", self.output_dir))?;
+            fs::create_dir_all(out.join("nxs-meta"))?;
+            fs::create_dir_all(out.join("nxs-out"))?;
+            fs::create_dir_all(out.join("nxs-findings"))?;
         }
         if self.execution.snapshot {
-            fs::create_dir_all(format!("{}/snapshot", self.output_dir))?;
+            fs::create_dir_all(out.join("snapshot"))?;
         }
         Ok(())
     }
