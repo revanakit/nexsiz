@@ -3,11 +3,24 @@ name = "nexsiz"
 version = "0.1.0"
 edition = "2021"
 authors = ["Revana"]
-description = "Nexsiz - Next-generation stateful network protocol fuzzer with semantic-preserving mutation, adaptive connection reuse, and hybrid state awareness"
+description = "Stateful network protocol fuzzer in pure Rust — semantic mutation, integrity repair, grey-box coverage, snapshot/desocket, NXS post-crash actors"
 license = "Apache-2.0"
 readme = "README.md"
-keywords = ["fuzzer", "network", "protocol", "stateful", "redteam", "offensive"]
-categories = ["development-tools", "network-programming"]
+keywords = [
+    "fuzzer",
+    "network",
+    "protocol",
+    "stateful",
+    "fuzzing",
+]
+categories = [
+    "development-tools",
+    "network-programming",
+    "command-line-utilities",
+]
+repository = "https://github.com/revanakit/nexsiz"
+homepage = "https://revanakit.github.io/nexsiz-blogs/"
+documentation = "https://github.com/revanakit/nexsiz"
 
 [[bin]]
 name = "nexsiz"
