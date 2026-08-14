@@ -1,10 +1,10 @@
-# Nexsiz
+# Nexsiz Fuzzing 
 
 <p align="center">
   <img src="nexsiz.jpg" width="400" height="400" alt="Logo">
 </p>
 
-**Stateful Network Protocol Fuzzer**
+#### Stateful Network Protocol Fuzzer**
 
 **Nexsiz** is a high-performance, modular, pure Rust-based network protocol fuzzer designed for deep network protocol testing. It is purpose-built to explore the deepest regions of a protocol's state machine—areas where conventional fuzzers miss structural validity or state context and consequently remain blind.
 
