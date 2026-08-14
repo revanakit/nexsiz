@@ -74,3 +74,7 @@ Operators are responsible for the security posture of any external tooling they 
 ---
 
 *This policy may be updated as the project evolves. Continued use of Nexsiz constitutes acceptance of the current policy.*
+
+--- 
+
+> Revana 
