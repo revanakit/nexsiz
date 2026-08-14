@@ -6,14 +6,80 @@
 //!
 //! NXS resolver — categories.toml + search-path priority (CONTRACT.md §8).
 //!
-//! Priority:
-//!   1. Absolute path in the expression
-//!   2. NEXSIZ_NXS_PATH / cfg.nxs.path
-//!      - Unix:    colon-separated
-//!      - Windows: semicolon-separated (colon would break `C:\...`)
-//!   3. ~/.nexsiz/nxs/bin/  (HOME, or USERPROFILE on Windows)
-//!   4. ./nxs/bin/ (cwd)
-//!   5. <exe_dir>/../nxs/bin/ and <exe_dir>/nxs/bin/
+//! Purpose
+//! - Resolve operator-facing NXS (next-stage) identifiers into concrete executable paths
+//!   according to the resolution policy defined by the project contract (nxs/CONTRACT.md §8).
+//!
+//! Responsibilities
+//! - Expand high-level set expressions (categories, comma-lists, or concrete ids) into
+//!   ordered lists of NXS ids relevant for a given engine event.
+//! - Locate executable binaries for those ids by searching a prioritized set of directories
+//!   and candidate executable names.
+//! - Provide an operator-facing listing that reports which configured ids were found or missing.
+//!
+//! Search & resolution policy (priority order)
+//! 1. If the expression contains an absolute path, use it directly when executable.
+//! 2. Explicit id expressions in the configured set (cfg.nxs.set) are expanded using
+//!    categories.toml and name-mapping rules.
+//! 3. Search paths (in order):
+//!    - cfg.nxs.path (operator-configured, platform-specific separator)
+//!    - NEXSIZ_NXS_PATH environment variable
+//!    - $HOME/.nexsiz/nxs/bin (or %USERPROFILE% on Windows)
+//!    - ./nxs/bin and ./.nxs/nxs/bin
+//!    - Candidate locations relative to the running executable: <exe_dir>/nxs/bin,
+//!      ../nxs/bin, ../../nxs/bin, etc.
+//!
+//! Candidate binary names tried for an id:
+//! - nxs-<name>
+//! - <name>
+//! - nxs-<id-with-slashes-replaced-by-dashes>
+//! - On Windows: each candidate is also tried with common executable extensions
+//!   (.exe, .cmd, .bat, .com).
+//!
+//! Expression semantics
+//! - Supported forms:
+//!   • Category name: "default", "crash", "hang", "safe", "intrusive", "external"
+//!   • Concrete id: "crash/auto-repro"
+//!   • Comma list: "default,hang" or "crash/auto-repro,external/notify-webhook"
+//! - The expansion respects event-context filtering: ids are only included when
+//!   appropriate for the current event (e.g., crash-specific ids for "crash" events).
+//! - Operator convenience: bare names without '/' are treated as "<event>/<name>" unless
+//!   the name matches a category or is explicitly prefixed (e.g., "external/...").
+//!
+//! Categories configuration
+//! - Built-in category defaults are loaded first (embedded map).
+//! - If present, project-local categories.toml is read from a small set of candidate paths
+//!   (nxs/categories.toml, . /nxs/categories.toml, and locations relative to the executable).
+//! - categories.toml is parsed permissively: simple TOML-ish lines mapping keys to string lists
+//!   (comments and sections are ignored); the parser tolerates quoting with ' or ".
+//!
+//! Platform notes
+//! - Path splitting uses ':' on Unix and ';' on Windows to avoid breaking Windows paths like "C:\..."
+//! - Executability checks:
+//!   • Unix: file and execute bit (mode & 0o111) are required.
+//!   • Windows: presence of a known executable extension is used, or no-extension files are allowed
+//!     (the caller may still fail to spawn if Windows cannot execute the file).
+//!
+//! API surface
+//! - resolve_nxs_list(cfg, event) -> Result<Vec<NxsSpec>, String>
+//!   Expand and resolve the configured set for a given event returning found specs.
+//! - list_resolved(cfg) -> Result<Vec<(String, Option<PathBuf>)>, String>
+//!   Operator listing used by CLI (`--nxs-list`) to show resolved/missing entries.
+//! - locate(id, search) -> Option<PathBuf>
+//!   Locates an executable for a concrete id using the candidate-name strategy and search path.
+//!
+//! Error handling & observability
+//! - Resolution failures are surfaced as human-readable Err(String) values suitable for CLI logging.
+//! - Missing entries are not considered fatal; callers may log missing ids at verbose/debug level.
+//!
+//! Testing recommendations
+//! - Unit tests for expression expansion across combinations of categories, events, and edge cases.
+//! - Platform-specific tests for split_search_paths and is_executable behavior (Unix vs Windows).
+//! - Integration tests that exercise categories.toml loading from candidate locations and
+//!   the locate() candidate name permutations (including Windows extensions).
+//!
+//! References
+//! - Contract: nxs/CONTRACT.md §8 — authoritative source for resolution semantics and expectations.
 
 use crate::common::config::Config;
 use std::collections::HashMap;
