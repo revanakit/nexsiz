@@ -11,6 +11,12 @@
 //!       * logs the code
 //!       * if code == 2 → records a secondary finding (JSONL + atomic counter)
 //!
+//! Exit-code mapping:
+//!   - Normal exit → `status.code()` (Unix and Windows)
+//!   - Unix signal death → mapped to exit 4 (Interrupted / cancelled per CONTRACT)
+//!   - Windows: no POSIX signals; if `status.code()` is None (rare, e.g. still
+//!     running edge cases already filtered by try_wait) → treat as exit 1
+//!
 //! The reaper is started once (lazy) when the first NXS is submitted.
 //! Process-local only; no shared state across processes.
 
@@ -159,6 +165,9 @@ fn handle_exit(t: &Tracked, status: ExitStatus) {
                 return 4; // Interrupted / cancelled per CONTRACT
             }
         }
+        // Windows (and any other non-Unix): no POSIX signals. A missing
+        // exit code after try_wait reported Some(status) is unexpected;
+        // map to operational failure.
         1
     });
 
