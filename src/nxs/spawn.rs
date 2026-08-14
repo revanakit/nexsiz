@@ -4,19 +4,52 @@
 //! Date    : 09/08/2026
 //! Module  : nexsiz::src::nxs::spawn
 //!
-//! Non-blocking NXS process spawn (CONTRACT.md §1).
+//! Purpose
+//! - Provide a small, dependency-free helper to spawn external NXS (next-stage)
+//!   analysis binaries non-blocking, following the command-line contract (CONTRACT.md §1).
 //!
-//! Spawn returns a `Child` immediately. The caller (or the async reaper)
-//! is responsible for eventually reaping it so zombies are avoided and
-//! exit codes can be observed without blocking the fuzzer hot-path.
+//! Responsibilities
+//! - Construct the contract CLI invocation and return a spawned `Child` immediately so
+//!   the fuzzer hot-path is never blocked waiting for external analysis to complete.
+//! - Apply a conservative stdio policy (null by default, inherited in verbose mode)
+//!   to prevent noisy NXS processes from filling pipes and stalling the engine.
+//! - Apply platform-appropriate detach semantics so spawned processes do not receive
+//!   control-C/console events intended for the parent fuzzer process.
 //!
-//! Stdio is null (or inherited only when verbose) so a noisy NXS cannot
-//! fill pipes and stall the engine.
+//! CLI contract & argument mapping
+//! - The spawned binary is invoked with the mandatory contract flags:
+//!   --crash <path> (optional), --minimized <path> (optional), --meta <path> (optional),
+//!   --target <host:port>, --event <name>, --model <name> (optional), --out <dir> (optional), -v (verbose).
+//! - Arguments are passed as separate Command::arg elements (no shell interpolation) for safety.
 //!
-//! Detach semantics:
-//! - Unix:    setsid() via pre_exec → new session
-//! - Windows: CREATE_NEW_PROCESS_GROUP → independent process group
-
+//! I/O and detach policy
+//! - Default: stdin/stdout/stderr → Stdio::null to fully isolate the NXS process.
+//! - Verbose mode: stdout/stderr are inherited so operator-visible diagnostics flow to console.
+//! - Unix: call setsid() in pre_exec to create a new session (fully detached).
+//! - Windows: use CREATE_NEW_PROCESS_GROUP to avoid parent console Ctrl-C propagation.
+//!
+//! Error handling & semantics
+//! - Returns Result<Child, String>; spawn failures return a human-readable error string
+//!   including the target path to simplify operator diagnostics.
+//! - Creation of per-NXS out_dir is attempted but failures are non-fatal for spawn: callers
+//!   should handle downstream consequences (e.g., missing output sidecars).
+//!
+//! Safety & best practices
+//! - Callers must ensure each returned Child is eventually reaped (the reaper module
+//!   is the intended consumer) to avoid zombies and to observe exit codes.
+//! - The function avoids shelling out and does not expose the parent process file
+//!   descriptors to children (except in verbose/inherit mode where intentional).
+//!
+//! Testing recommendations
+//! - Unit tests for argument composition and correct handling of optional parameters.
+//! - Platform-specific tests for detach behavior (setsid / creation flags) via integration tests.
+//! - End-to-end tests that spawn a short-lived helper binary and verify the fuzzer remains non-blocking,
+//!   stdio isolation behaves as expected, and spawn failures produce clear error messages.
+//!
+//! References
+//! - Contract: nxs/CONTRACT.md §1 — authoritative specification for CLI flags and exit semantics.
+//! - See nxs::reaper for how spawned Child handles are consumed and observed.
+    
 use crate::nxs::resolve::NxsSpec;
 use std::fs;
 use std::process::{Child, Command, Stdio};
