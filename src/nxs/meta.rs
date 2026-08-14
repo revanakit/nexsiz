@@ -1,5 +1,39 @@
-//! Hand-rolled JSON meta writer (nxs/CONTRACT.md §3).
-//! Pure stdlib — no serde. Forward-compatible: unknown fields are simply omitted.
+//! Module: meta.rs
+//!
+//! Purpose
+//! - Produce a compact JSON "meta" file describing a single engine event, implementing the minimal schema defined in nxs/CONTRACT.md §3.
+//!
+//! Design goals
+//! - Dependency‑free: implemented with the Rust standard library only (no serde) to keep the runtime and build footprint minimal.
+//! - Forward‑compatible: writer omits unknown/optional fields so newer schemas can add fields without breaking older writers or consumers that treat missing fields as optional.
+//! - Human‑readable: output is pretty-printed with stable ordering to make debugging and manual inspection straightforward.
+//!
+//! Produced schema (overview)
+//! - Top-level keys: "nexsiz_version", "event", "timestamp", "target", "model", "crash", "result", "corpus_id", "output_dir".
+//! - "target": object with "host", "port", "protocol".
+//! - "crash": object with "id", "path", optional "minimized_path", "input_len" (derived from context or crash file length).
+//! - "result": object with "outcome", optional "error", "elapsed_ms", "coverage_hits", "new_state", "response_codes" (array).
+//!
+//! Implementation notes
+//! - Timestamp is reported as UNIX epoch seconds with millisecond precision (f64).
+//! - Strings are escaped by a custom routine which handles: double quotes, backslashes, common escapes (\n, \r, \t) and encodes other control characters as `\uXXXX` sequences.
+//! - The writer preallocates a String buffer for performance and performs a single File::create + write_all to produce the file. Parent directories are created as needed.
+//! - Input length resolution: if ctx.input_len > 0 that value is used; otherwise, if a crash_path is present the file size of crash_path is used as a fallback.
+//!
+//! Error handling and semantics
+//! - All I/O failures are propagated as `Result<(), String>` with descriptive messages (including the failing path and system error) to simplify diagnostics in callers or test harnesses.
+//! - Consumers should treat missing optional fields as absent (e.g., "error" or "minimized_path") — the writer intentionally omits empty/none values.
+//!
+//! Safety, concurrency, and performance considerations
+//! - The module itself does not perform inter-process synchronization; callers must avoid concurrent writes to the same path or provide external locking if required.
+//! - The hand‑rolled JSON implementation favors minimal dependencies and explicit control over output; if strict schema validation, binary compatibility, or richer features are needed, consider switching to serde + serde_json with a typed struct and schema tests.
+//!
+//! Testing recommendations
+//! - Add tests that parse the produced JSON with a robust JSON parser to ensure valid output and correct escaping for edge-case inputs (embedded control characters, quotes, non-ASCII, etc.).
+//! - Add integration tests that cover failure cases for directory creation and file writes to ensure error messages remain informative.
+//!
+//! Reference
+//! - Contract / canonical schema: nxs/CONTRACT.md §3 (authoritative source for field names and consumer expectations).
 
 use std::fs;
 use std::io::Write;
