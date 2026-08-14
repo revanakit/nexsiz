@@ -2,7 +2,9 @@
 
 External grey-box instrumentation for Nexsiz.
 
-The agent injects an AFL-style 64 KiB edge map into a platform shared-memory region. Nexsiz’s `SharedMapCoverage` provider (`-C map`) owns the region, clears it before every execution, and harvests the hits afterward. What the target touches in the dark becomes visible to the fuzzer.
+The agent injects an AFL-style 64 KiB edge map into a platform shared-memory region. Nexsiz’s `SharedMapCoverage` provider (`-C map`) owns the region, clears it before every execution, and harvests the hits afterward.
+
+**One script, both platforms** — `nexsiz_cov.js` detects `Process.platform` and opens the correct transport automatically.
 
 ## SHM protocol
 
@@ -19,53 +21,43 @@ The agent injects an AFL-style 64 KiB edge map into a platform shared-memory reg
 | **Linux** | `/nexsiz-cov` | `/nexsiz-cov-<id>` |
 | **Windows** | `Local\nexsiz-cov` | `Local\nexsiz-cov-<id>` |
 
-Nexsiz creates and attaches the region. The Frida agent opens the **same name** and increments cells. Between executions Nexsiz zeroes the map — no residual noise.
-
-On Windows the object lives in the session-local namespace (`Local\`) so no elevation is required. Frida scripts must open the corresponding named File Mapping (UTF-16 name).
+Nexsiz creates/attaches the region. The Frida agent opens the **same name** and increments cells. Between executions Nexsiz zeroes the map.
 
 ## Quick start (Linux)
 
 ```bash
-# Terminal A – instrument the target
 export NEXSIZ_SHM_ID=demo
-# Optional: constrain Stalker to a single module
-export NEXSIZ_COV_MODULE=mydaemon
+export NEXSIZ_COV_MODULE=mydaemon   # optional
 frida -l agents/frida/nexsiz_cov.js -f ./mydaemon --no-pause
 
-# Terminal B – fuzz with live SHM coverage
 export NEXSIZ_SHM_ID=demo
 ./target/release/nexsiz -h 127.0.0.1 -p 21 -m ftp -C map --shm demo -v
-```
-
-Or pass the SHM id solely via CLI / config:
-
-```bash
-nexsiz -C map --shm demo ...
-# config file:
-# coverage=map
-# coverage_shm=demo
 ```
 
 ## Quick start (Windows)
 
 ```powershell
-# Terminal A – instrument the target (Frida for Windows)
 $env:NEXSIZ_SHM_ID = "demo"
+$env:NEXSIZ_COV_MODULE = "mydaemon"   # optional
 frida -l agents/frida/nexsiz_cov.js -f .\mydaemon.exe
 
-# Terminal B – fuzz
 $env:NEXSIZ_SHM_ID = "demo"
 .\target\release\nexsiz.exe -h 127.0.0.1 -p 21 -m ftp -C map --shm demo -v
 ```
 
-> **Note**: The stock `nexsiz_cov.js` currently targets POSIX SHM. A Windows-aware agent variant (opening `Local\nexsiz-cov[-id]` via Frida’s Windows Memory / NativeFunction APIs) is required for full grey-box on Windows. Until that agent lands, `-C map` still works for the in-process synthetic edges; external Frida hits need the Windows agent update.
+On success the agent logs:
+
+```
+[nexsiz-cov] SHM attached (Windows): Local\nexsiz-cov-demo @ 0x...
+[nexsiz-cov] agent ready on windows — Nexsiz can now collect grey-box edges
+```
 
 ## Modes
 
 | `NEXSIZ_COV_MODE` | Behaviour |
 |------------------|-----------|
-| `stalker` (default) | Basic-block edge coverage via Frida Stalker — higher fidelity, measurable overhead |
-| `exports` | Interceptor on recv/read/send/parse-like exports — lighter, lower noise |
+| `stalker` (default) | Basic-block edge coverage via Frida Stalker |
+| `exports` | Interceptor on recv/read/send/parse-like exports (includes `WSARecv` / `WSASend` on Windows) |
 
 ## Environment variables
 
@@ -77,11 +69,11 @@ $env:NEXSIZ_SHM_ID = "demo"
 
 ## Operational notes
 
-- **Linux**: Frida + POSIX SHM under `/dev/shm/`. Clean residual maps with `rm /dev/shm/nexsiz-cov*` when the campaign ends.
-- **Windows**: Named File Mapping in the Local namespace. No automatic cleanup of the named object (same design as Linux).
-- Stalker carries real cost; prefer `exports` when throughput matters more than block-level resolution.
+- **Linux**: POSIX SHM under `/dev/shm/`. Clean with `rm /dev/shm/nexsiz-cov*` when done.
+- **Windows**: Named File Mapping in the `Local\` namespace (no elevation required). Object is not destroyed on process exit so both sides can reattach.
+- Prefer `exports` when throughput matters more than block-level resolution.
 - Remote-only targets without a local process cannot use this agent; fall back to `-C software`.
-- The agent and the fuzzer must agree on the same `NEXSIZ_SHM_ID`. Mismatch is silent blindness.
+- The agent and the fuzzer must agree on the same `NEXSIZ_SHM_ID`.
 
 ---
 *Precision over noise. The map only records what the target actually touches.*
