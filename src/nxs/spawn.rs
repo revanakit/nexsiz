@@ -1,3 +1,9 @@
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Author  : Revana
+//! Date    : 09/08/2026
+//! Module  : nexsiz::src::nxs::spawn
+//!
 //! Non-blocking NXS process spawn (CONTRACT.md §1).
 //!
 //! Spawn returns a `Child` immediately. The caller (or the async reaper)
