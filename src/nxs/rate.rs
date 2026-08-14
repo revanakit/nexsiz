@@ -6,14 +6,53 @@
 //!
 //! NXS spawn rate limiting and deduplication
 //!
-//! Process-local ledger:
-//! - Per (event, crash_id, nxs_id) cooldown window
-//! - Per-event spawn counter
-//! - Campaign-wide total spawn counter
+//! Purpose
+//! - In-process rate limiter and deduplication ledger for spawning external NXS (next-stage)
+//!   analysis processes. Ensures the fuzzer does not overwhelm downstream tooling by applying
+//!   per-(event,crash,nxs) cooldowns, per-event caps, and a campaign-wide total cap.
 //!
-//! Designed for high-throughput campaigns: O(1) checks, no I/O, no locks beyond
-//! a single Mutex held for microseconds. When NXS is disabled the module is never
-//! entered.
+//! Design & guarantees
+//! - In-memory, process-local ledger: no disk/network I/O, no external coordination.
+//! - Thread-safe via a single Mutex protecting the ledger; the lock is held only for microseconds
+//!   during checks and updates to keep contention minimal in high-throughput scenarios.
+//! - Time complexity: O(1) amortized checks and updates. Memory usage grows with the number
+//!   of unique (event,crash_id,nxs_id) keys; a bounded opportunistic prune keeps the map size in check.
+//!
+//! Data model
+//! - recent: HashMap keyed by "{event}|{crash_id}|{nxs_id}" → Entry { last: Instant } (cooldown enforcement).
+//! - per_event: HashMap keyed by event → u64 counter (per-event cap enforcement).
+//! - total: u64 counter (campaign-wide cap).
+//!
+//! API semantics
+//! - check_and_record(event, crash_id, nxs_id, cooldown, max_per_event, max_total) → RateDecision
+//!   • cooldown: minimum interval between identical (event, crash_id, nxs_id) spawns.
+//!   • max_per_event: 0 means "unlimited" for that event.
+//!   • max_total: 0 means "unlimited" campaign-wide.
+//!   • On Allow the ledger is updated (recent entry inserted/renewed, per-event counter incremented, total++). 
+//!   • Decisions: Allow, DenyCooldown, DenyPerEventCap, DenyTotalCap.
+//!
+//! Pruning policy
+//! - To prevent unbounded growth, the ledger opportunistically prunes `recent` when its length
+//!   exceeds 4096 entries, removing entries older than (now - cooldown - 1s). This keeps memory
+//!   stable while retaining recent keys needed for cooldown checks.
+//!
+//! Concurrency & usage notes
+//! - The module is designed to be called from hot paths; the Mutex ensures correctness but callers
+//!   should avoid extremely high-frequency loops that can cause contention. If distributed rate-limiting
+//!   is required (cluster-wide), implement an external coordinator — this module is not suitable for that.
+//! - All time comparisons use Instant to avoid wall-clock jumps.
+//!
+//! Testing recommendations
+//! - Unit tests for all RateDecision branches (cooldown, per-event cap, total cap, allow).
+//! - Concurrency tests that exercise multiple threads calling check_and_record concurrently.
+//! - Tests that verify pruning behavior and ensure the ledger remains bounded under load.
+//!
+//! Observability
+//! - Expose lightweight stats() (total, recent.len()) for monitoring/logging and to aid debugging
+//!   when a campaign appears to be rate-limited unexpectedly.
+//!
+//! See also
+//! - nxs::spawn, nxs::reaper, and nxs::mod for how decisions affect NXS process lifecycle.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
