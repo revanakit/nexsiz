@@ -1,0 +1,14 @@
+[package]
+name = "nxs-auth-escalation"
+version = "0.1.0"
+edition = "2021"
+description = "Official NXS: protocol-aware post-anomaly privilege / command escalation probe"
+license = "Apache-2.0"
+
+[[bin]]
+name = "nxs-auth-escalation"
+path = "src/main.rs"
+
+[dependencies]
+nxs-lib = { path = "../lib" }
+serde_json = "1"
