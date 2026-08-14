@@ -26,8 +26,6 @@ json-model = ["dep:serde", "dep:serde_json"]
 criu = []
 
 [dependencies]
-libc = "0.2"
-
 # LibAFL 0.15 path (optional). serdeany_autoreg is required so that
 # Serialize/Deserialize observers (ResponseStateObserver) and StdState
 # populate the type registry; otherwise -L panics at startup with
@@ -36,6 +34,11 @@ libafl = { version = "0.15.4", optional = true, default-features = false, featur
 libafl_bolts = { version = "0.15.4", optional = true, default-features = false, features = ["std", "serdeany_autoreg"] }
 serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
+
+# POSIX SHM (shm_open/mmap) + setsid() — Linux / Unix only.
+# Windows path uses pure kernel32 File Mapping (no libc).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [profile.release]
 lto = true
