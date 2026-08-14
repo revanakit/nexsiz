@@ -9,5 +9,7 @@
 
 **AUTHOR:** Revana
 
+**DOCUMENT:** revanakit.github.io/nexsiz-blogs/
+
 **PROJECT STARTED ON:** 07/07/2026
 
