@@ -1,3 +1,9 @@
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Author  : Revana
+//! Date    : 14/08/2026
+//! Module  : nexsiz::src::platform::mod
+//!
 //! Platform abstraction layer for Nexsiz — OS-specific primitives and contracts.
 //!
 //! This module defines the portable interface and invariants for platform-level
