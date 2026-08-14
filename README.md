@@ -1,11 +1,8 @@
 # Nexsiz
 
-```
-   _  _______  ______________    
-  / |/ / __/ |/_/ __/  _/_  /    
- /    / _/_>  <_\ \_/ /  / /_    
-/_/|_/___/_/|_/___/___/ /___/    
-```
+<p align="center">
+  <img src="./icon.jpg" width="48" height="48" alt="Logo">
+</p>
 
 **Stateful Network Protocol Fuzzer**
 
