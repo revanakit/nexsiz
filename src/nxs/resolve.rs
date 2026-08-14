@@ -1,3 +1,9 @@
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! Author  : Revana
+//! Date    : 09/08/2026
+//! Module  : nexsiz::src::nxs::resolve
+//!
 //! NXS resolver — categories.toml + search-path priority (CONTRACT.md §8).
 //!
 //! Priority:
