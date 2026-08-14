@@ -16,7 +16,6 @@
 //! Plus NXS existence-script integration (meta writer + non-blocking spawn).
 //! Plus a platform abstraction layer for multi-OS support (Windows, Linux, ...).
 //! Minimal external dependencies (libc for robust signal handling only).
-//! Designed for red-team / APT-grade reliability, modularity, and operational sustainability.
 
 #![allow(dead_code)]
 #![allow(clippy::too_many_arguments)]
