@@ -1,7 +1,7 @@
 # Nexsiz
 
 <p align="center">
-  <img src="./icon.jpg" width="48" height="48" alt="Logo">
+  <img src="./icon.jpg" width="400" height="400" alt="Logo">
 </p>
 
 **Stateful Network Protocol Fuzzer**
