@@ -1,13 +1,41 @@
-//! Platform abstraction layer for Nexsiz.
+//! Platform abstraction layer for Nexsiz — OS-specific primitives and contracts.
 //!
-//! This module isolates OS-specific primitives (shared memory, process group
-//! semantics, etc.) so that the rest of the fuzzer remains portable.
+//! This module defines the portable interface and invariants for platform-level
+//! services used by the fuzzer (shared memory coverage regions, process/group
+//! semantics, file-mapping backends, etc.). It intentionally isolates all
+//! operating-system dependencies behind the `SharedMemory` and
+//! `PlatformServices` traits so the core fuzzer logic remains cross-platform.
 //!
-//! - Phase 0: traits + skeleton
-//! - Phase 1: Linux POSIX SHM behind SharedMemory
-//! - Phase 2: Windows File Mapping behind SharedMemory
+//! Key responsibilities:
+//! - Provide a stable, process-shareable coverage region of size
+//!   `COVERAGE_MAP_SIZE` and guarantee the `SharedMemory` contract.
+//! - Offer platform-specific implementations (Linux POSIX SHM, Windows file
+//!   mappings) behind a uniform `create_coverage_map` factory.
+//! - Document lifecycle, concurrency, and security expectations for callers
+//!   interacting with the raw coverage region.
 //!
-//! Naming conventions for external agents (Frida, etc.):
+//! Important invariants and semantics:
+//! - COVERAGE_MAP_SIZE must remain in sync with the runtime coverage consumer
+//!   (e.g., coverage::MAP_SIZE). Implementations must expose exactly that many
+//!   bytes and treat the region as a raw byte array.
+//! - The shared region is intended for single-byte reads/writes from multiple
+//!   processes; this layer does NOT provide inter-process synchronization.
+//!   Higher-level synchronization (if required) is the caller's responsibility.
+//! - Newly created regions should be zero-initialized; implementations must
+//!   ensure proper sizing (ftruncate / SetEndOfFile) before mapping.
+//!
+//! Security and deployment notes:
+//! - Default permissions should limit access (e.g., 0o600 on POSIX). Avoid
+//!   predictable global names in multi-tenant or untrusted environments.
+//! - Implementations may intentionally avoid unlinking shared objects on Drop
+//!   to allow reattachment by external agents; explicit cleanup must be done by
+//!   an external controller when permanent removal is desired.
+//!
+//! Extensibility:
+//! - Add platform backends by implementing `SharedMemory` + `PlatformServices`
+//!   and gating them behind cfg(target_os = "...") in this module.
+//!
+//! Naming conventions for external agents:
 //! - Linux:   `/nexsiz-cov` or `/nexsiz-cov-<id>`
 //! - Windows: `Local\nexsiz-cov` or `Local\nexsiz-cov-<id>`
 
