@@ -3,16 +3,69 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::libafl_runner
 //!
-//! Multi-core LLMP is temporarily deferred until the single-core path is solid.
-//! When workers > 1 we still run single-core (with a notice) for reliability.
+//! Purpose:
+//!   Provides LibAFL campaign wiring and a single-core runner for NEXSIZ.
+//!   This module constructs observers, feedbacks, state, executor, and
+//!   mutational stages, loads seed corpus files, and drives the LibAFL
+//!   fuzzing loop (with optional execution/time limits).
 //!
-//! Observer / feedback wiring (LibAFL 0.15):
-//!   1. Create StdMapObserver ("response_map")
-//!   2. MaxMapFeedback::new(&observer)  — records the name
-//!   3. StdState::new(..., &mut feedback, &mut objective)
-//!   4. Move the SAME observer into the executor via build_executor_with_observer
-//! Feedback then resolves the observer by name inside the executor — no unwrap panic.
-
+//! Primary responsibilities:
+//!   - Construct a process-lifetime response StdMapObserver and ensure it is
+//!     shared (moved) consistently between feedbacks and the executor so that
+//!     MaxMapFeedback resolves the observer by name correctly.
+//!   - Initialize StdState (StdRand, in-memory corpus, on-disk crash corpus),
+//!     wiring feedbacks and objective correctly to the state.
+//!   - Build NexsizNetworkExecutor using build_executor_with_observer so the
+//!     same StdMapObserver instance is owned by the executor (LibAFL 0.15
+//!     requirement — see compatibility notes).
+//!   - Load seed inputs from the configured seed directory into the fuzzer as
+//!     BytesInput values, guaranteeing that at least one seed is present.
+//!   - Create a protocol-aware NexsizHierarchicalMutator and expose it via a
+//!     StdMutationalStage for the mutational pipeline.
+//!   - Run the fuzz loop (fuzz_loop / fuzz_loop_for) honoring configuration
+//!     options for max executions or max runtime.
+//!
+//! Key functions:
+//!   - run_libafl_campaign(cfg: &Config) -> Result<()>:
+//!       Top-level entry that performs directory sanity checks and then
+//!       delegates to the single-core runner. Emits a notice when configured
+//!       workers > 1 because multi-core LLMP is temporarily disabled.
+//!   - run_single_core(cfg: &Config) -> Result<()>:
+//!       Implements the full LibAFL single-core setup described above and
+//!       executes the fuzzer loop.
+//!
+//! Important implementation & compatibility notes (LibAFL 0.15):
+!//    - Observer tuple shape: libafl uses nested tuples for observers; this
+//!      module uses tuple_list!(observer) producing (Obs, ()) as expected.
+//!    - StdMapObserver & MaxMapFeedback: MaxMapFeedback records the observer
+//!      by name (e.g., "response_map") and later resolves it inside the
+//!      executor's observer list. The StdMapObserver instance passed to
+//!      MaxMapFeedback::new MUST be the same instance that is moved into the
+//!      executor — passing a different/detached observer will result in an
+//!      unwrap panic at evaluation time.
+//!    - Multi-core LLMP: multi-worker LLMP support is deferred; when cfg
+//!      requests workers > 1, the runner currently falls back to single-core
+//!      execution and prints an informational notice for reliability.
+//!
+//! Robustness and error handling:
+//!   - OnDiskCorpus creation errors are converted into NexsizError::Config to
+//!     provide clearer diagnostics at startup.
+//!   - Seed-loading is defensive: only regular files are read and empty files
+//!     are ignored. If no seeds are loaded, a default seed ("NEXSIZ\r\n") is
+//!     inserted to ensure the fuzz loop can start.
+//!
+//! Observability & diagnostics:
+//!   - The runner uses SimpleMonitor / SimpleEventManager and prints succinct
+//!     status lines indicating target host:port, protocol, and corpus size.
+//!
+//! See also:
+//!   - crate::execution::libafl_exec for executor/observer construction and
+//!     behavioural response-map folding.
+//!   - crate::execution::libafl_mutator for hierarchical/protocol-aware
+//!     mutation logic used in the mutational stage.
+//!   - crate::common::config and crate::common::error for configuration and
+//!     error mapping conventions used here.
+    
 use crate::common::config::Config;
 use crate::common::error::{NexsizError, Result};
 use crate::execution::libafl_exec::{build_executor_with_observer, make_response_observer};
