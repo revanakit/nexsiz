@@ -1,6 +1,7 @@
-//! Operator-defined / JSON-driven desocket sequences.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::desocket::spec
 //!
 //! SpecDesocket sends the exact byte sequences provided by the operator
 //! (via ProtocolModel.desocket or a JSON model).  No heuristics — the
