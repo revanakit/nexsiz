@@ -1,6 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
-//! Author  : Revana
-//! Date    : 08/08/2026
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::engine
 //!
 //! Snapshot / Desocketing integration (Phases 1–3):
 //!   Engine owns SnapshotProvider. When snapshot=true the provider
