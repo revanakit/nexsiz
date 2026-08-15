@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/scripting/mutator_bridge.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::scripting::mutator_bridge
 //!
 //! Python Mutator hooks bridge (push extras – zero hot-path RPC)
 //! 
