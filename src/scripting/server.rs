@@ -4,18 +4,15 @@
 //! MODULE     ::     src::scripting::server
 //!
 //! Unix domain socket RPC server (+ oracle-mode reverse-RPC loop).
+//! On non-Unix platforms RpcServer::start returns an explicit error — RPC is
+//! a Linux/macOS operator feature; Windows builds remain usable without it.
 
-use crate::scripting::handler::{HandleOutcome, RpcContext};
-use crate::scripting::json::{self, JsonValue};
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use crate::scripting::handler::RpcContext;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
-/// Background RPC server. Owns the listen socket path.
+/// Background RPC server. Owns the listen socket path (Unix only).
 pub struct RpcServer {
     path: String,
     stop: Arc<AtomicBool>,
@@ -23,32 +20,17 @@ pub struct RpcServer {
 }
 
 impl RpcServer {
+    /// Start the Unix-domain RPC listener. Non-Unix → Err with clear message.
     pub fn start(path: &str, ctx: Arc<RpcContext>, stop: Arc<AtomicBool>) -> Result<Self, String> {
-        let _ = std::fs::remove_file(path);
-        if let Some(parent) = Path::new(path).parent() {
-            let _ = std::fs::create_dir_all(parent);
+        #[cfg(unix)]
+        {
+            return start_unix(path, ctx, stop);
         }
-
-        let listener = UnixListener::bind(path).map_err(|e| format!("bind {}: {}", path, e))?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|e| format!("nonblocking: {}", e))?;
-
-        let path_owned = path.to_string();
-        let stop_flag = Arc::clone(&stop);
-
-        let join = thread::Builder::new()
-            .name("nexsiz-rpc".into())
-            .spawn(move || {
-                accept_loop(listener, ctx, stop_flag);
-            })
-            .map_err(|e| format!("spawn rpc thread: {}", e))?;
-
-        Ok(Self {
-            path: path_owned,
-            stop,
-            join: Some(join),
-        })
+        #[cfg(not(unix))]
+        {
+            let _ = (path, ctx, stop);
+            Err("RPC campaign control requires Unix domain sockets (not available on this platform)".into())
+        }
     }
 
     pub fn path(&self) -> &str {
@@ -66,10 +48,53 @@ impl Drop for RpcServer {
     }
 }
 
-fn accept_loop(listener: UnixListener, ctx: Arc<RpcContext>, stop: Arc<AtomicBool>) {
+// ─── Unix implementation ─────────────────────────────────────────────────────
+
+#[cfg(unix)]
+fn start_unix(path: &str, ctx: Arc<RpcContext>, stop: Arc<AtomicBool>) -> Result<RpcServer, String> {
+    use std::os::unix::net::UnixListener;
+    use std::path::Path;
+
+    let _ = std::fs::remove_file(path);
+    if let Some(parent) = Path::new(path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let listener = UnixListener::bind(path).map_err(|e| format!("bind {}: {}", path, e))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("nonblocking: {}", e))?;
+
+    let path_owned = path.to_string();
+    let stop_flag = Arc::clone(&stop);
+
+    let join = thread::Builder::new()
+        .name("nexsiz-rpc".into())
+        .spawn(move || {
+            accept_loop(listener, ctx, stop_flag);
+        })
+        .map_err(|e| format!("spawn rpc thread: {}", e))?;
+
+    Ok(RpcServer {
+        path: path_owned,
+        stop,
+        join: Some(join),
+    })
+}
+
+#[cfg(unix)]
+fn accept_loop(
+    listener: std::os::unix::net::UnixListener,
+    ctx: Arc<RpcContext>,
+    stop: Arc<AtomicBool>,
+) {
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
+                let stream: UnixStream = stream;
                 let ctx = Arc::clone(&ctx);
                 let stop = Arc::clone(&stop);
                 let _ = thread::Builder::new()
@@ -86,11 +111,22 @@ fn accept_loop(listener: UnixListener, ctx: Arc<RpcContext>, stop: Arc<AtomicBoo
     }
 }
 
-fn handle_client(stream: UnixStream, ctx: Arc<RpcContext>, stop: Arc<AtomicBool>) {
+#[cfg(unix)]
+fn handle_client(
+    stream: std::os::unix::net::UnixStream,
+    ctx: Arc<RpcContext>,
+    stop: Arc<AtomicBool>,
+) {
+    use crate::scripting::handler::HandleOutcome;
+    use crate::scripting::json::{self, JsonValue};
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
     let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
 
-    let reader_stream = match stream.try_clone() {
+    let reader_stream: UnixStream = match stream.try_clone() {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -150,12 +186,16 @@ fn handle_client(stream: UnixStream, ctx: Arc<RpcContext>, stop: Arc<AtomicBool>
 }
 
 /// Reverse-RPC loop: engine pushes is_interesting requests; Python answers.
-fn run_oracle_mode<R: BufRead, W: Write>(
+#[cfg(unix)]
+fn run_oracle_mode<R: std::io::BufRead, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
     ctx: &RpcContext,
     stop: &AtomicBool,
 ) {
+    use crate::scripting::json;
+    use std::time::Duration;
+
     let rx = ctx.oracle_bridge.register();
     *ctx.oracle_name.lock().unwrap() = "python".into();
 
