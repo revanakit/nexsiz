@@ -1,6 +1,7 @@
-//! CRIU-based snapshot provider (feature = "criu").
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::snapshot::criu
 //!
 //! Shells out to the `criu` binary for dump / restore.
 //! Requires:
