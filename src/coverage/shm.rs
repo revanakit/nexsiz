@@ -5,7 +5,7 @@
 //!
 //! Compatibility layer for POSIX Shared-Memory Coverage Map.
 //!
-//! **Phase 1 (2026-08-13)**: The canonical implementation has moved to
+//! (2026-08-13)**: The canonical implementation has moved to
 //! `crate::platform` (LinuxSharedMemory). This module now provides a thin
 //! adapter so existing call sites that still reference `coverage::shm::ShmMap`
 //! continue to compile. New code should use:
