@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 09/08/2026
-//! Module  : nexsiz::src::common::error
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::common::error
 //!
 //! Centralized error type and related helpers used throughout the fuzzer.
 //! This module defines `NexsizError`, an exhaustive enum encapsulating both
