@@ -3,15 +3,52 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::process_monitor
 //!
-//! Optional local process monitoring for targets launched as child processes.
+//! Purpose:
+//!   Lightweight, cross-platform helper to optionally launch and monitor a
+//!   target program as a child process. Intended for local testing workflows
+//!   where the fuzzer controls the lifecycle of the instrumented target.
 //!
-//! Crash detection:
-//! - Unix:    non-zero exit **or** signal termination → abnormal
-//! - Windows: non-zero exit code (TerminateProcess / unhandled exception
-//!            typically surfaces as a non-zero code; there are no POSIX signals)
+//! Responsibilities:
+//!   - Spawn a child process for a configured command and provide a short
+//!     settle interval to allow the target to initialize (e.g., bind sockets).
+//!   - Expose thread-safe, non-blocking liveness checks (is_alive) and an
+//!     abnormal-exit indicator (crashed) suitable for crash triage.
+//!   - Provide deterministic termination semantics (terminate) and ensure
+//!     cleanup via Drop to avoid orphaned processes.
 //!
-//! `std::process::Child` already abstracts spawn / try_wait / kill across
-//! platforms. This module adds a thin monitoring API and light detach flags.
+//! Implementation notes:
+//!   - Uses std::process::Command / Child for portability; the Child is stored
+//!     inside Arc<Mutex<Option<Child>>> to allow safe sharing between threads.
+//!   - A 200ms sleep after spawn gives the target a brief window to initialize
+//!     before the fuzzer begins interactions; adjust if your target needs more time.
+//!   - On Windows the code requests CREATE_NEW_PROCESS_GROUP (best-effort) so
+//!     console signals delivered to the fuzzer do not necessarily propagate to
+//!     the target; this mirrors NEXS's detach policy and is non-fatal if
+//!     unsupported on the platform.
+//!
+//! Crash semantics (platform considerations):
+//!   - Unix: abnormal termination is detected via a non-success ExitStatus
+//!     (covers non-zero exit codes and signal-caused deaths).
+//!   - Windows: abnormal termination is detected via non-zero exit codes
+//!     (TerminateProcess and unhandled exceptions typically surface as
+//!     non-zero values reported by the runtime).
+//!
+//! Safety & robustness:
+//!   - Mutexes are used for synchronization; unwrap() is used for brevity when
+//!     locking — if your integration requires resilience to mutex poisoning,
+//!     replace unwrap() with explicit recovery logic.
+//!   - terminate() attempts to kill the child (SIGKILL / TerminateProcess) and
+//!     waits for it to exit; Drop invokes terminate() to guarantee cleanup.
+//!
+//! API summary:
+//!   - spawn(cmd: &str) -> Result<ProcessMonitor> : start and monitor a child.
+//!   - is_alive(&self) -> Result<bool> : non-blocking check if the process is running.
+//!   - crashed(&self) -> bool : query whether the process has already exited abnormally.
+//!   - terminate(&self) : forcibly stop the child if still running.
+//!
+//! See also:
+//!   - crate::common::error::{NexsizError, Result} for error mapping conventions.
+//!   - Other execution helpers in crate::execution for orchestration patterns.
 
 use crate::common::error::{NexsizError, Result};
 use std::process::{Child, Command, Stdio};
