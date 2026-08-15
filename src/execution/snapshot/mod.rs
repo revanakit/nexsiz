@@ -1,6 +1,7 @@
-//! NEXSIZ – Snapshot / restore abstraction for target process state
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::snapshot::mod
 //!
 //! Snapshot / Desocketing track (complete):
 //!   Phase 1 – SnapshotProvider trait, Null / ProcessRestart / CRIU backends
