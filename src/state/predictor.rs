@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/state/predictor.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::state::predictor
 //!
 //! Adaptive state transition predictor.
 
