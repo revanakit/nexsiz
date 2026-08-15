@@ -3,13 +3,87 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::engine
 //!
-//! Snapshot / Desocketing integration (Phases 1–3):
-//!   Engine owns SnapshotProvider. When snapshot=true the provider
-//!   manages target process lifecycle (prepare → take_snapshot →
-//!   restore-on-crash). On successful restore, restore_epoch is
-//!   incremented so all workers force-reconnect (Phase 3 orchestration).
-//!   ProcessMonitor is retained only as a legacy fallback when snapshot
-//!   is disabled.
+//! Description
+//! -----------
+//! The Engine is the top-level campaign orchestrator for a fuzzing run. It
+//! initializes and owns the primary runtime subsystems (corpus, coverage,
+//! state tracker, predictor, plugin bridges, RPC control, and the worker pool),
+//! coordinates process lifecycle management (snapshotting or legacy process
+//! monitoring), and serializes interesting findings (crashes/hangs/coverage).
+//!
+//! Core responsibilities
+//! ---------------------
+//! - Initialize and wire together plugins, coverage provider, snapshot provider,
+//!   RPC server, Python bridges, logging, and shared statistics/state objects.
+//! - Load seed corpus and spawn worker threads that perform executions.
+//! - Consume worker ExecutionResult events via an MPSC channel and perform:
+//!     * classification (crash / hang / interesting / new coverage / new state)
+//!     * persistence (write crash/hang/minimized testcases to disk)
+//!     * minimization (invoke the monitor minimizer with network re-execution)
+//!     * NXS event notification (integration points for external finders/metadata)
+//! - Manage target process lifecycle:
+//!     * Snapshot-enabled workflow (preferred): prepare → take_snapshot → restore
+//!       on crash. On successful restore, bump restore_epoch to force workers to
+//!       reconnect and re-establish protocol sessions (Phase 1–3 orchestration).
+//!     * Legacy fallback: ProcessMonitor tracks and restarts the target when
+//!       snapshotting is disabled.
+//! - Graceful shutdown: handle signals, stop workers, drain pending results, and
+//!   emit final statistics and summaries.
+//!
+//! Concurrency & communication
+//! ---------------------------
+//! - Shared state is guarded with Arc / Mutex where required; SharedStats and
+//!   other shared runtime objects are referenced across worker threads.
+//! - Stop/termination is signaled via an Arc<AtomicBool> set by signal handlers
+//!   and the RPC control path.
+//! - Workers send ExecutionResult messages through a channel to the Engine's
+//!   event loop; Engine serializes side-effects (file I/O, snapshot restores,
+//!   minimizer invocations) to avoid races.
+//!
+//! Snapshot / desocketing integration (Phases 1–3)
+//! -----------------------------------------------
+//! - Engine owns the SnapshotProvider abstraction (may be a no-op when disabled).
+//! - When snapshot=true the provider is responsible for full target lifecycle
+//!   handling: prepare, take_snapshot, and restore-on-crash. After a successful
+//!   restore the Engine increments restore_epoch so worker threads detect the
+//!   epoch change and re-establish fresh connections (forces reconnect / desocket
+//!   recovery across protocol sessions).
+//! - When snapshotting is disabled, ProcessMonitor is used as a legacy fallback
+//!   solely to detect abnormal process exits and optionally restart the target.
+//!
+//! Error handling & observability
+//! ------------------------------
+//! - Errors during optional subsystems (snapshot prepare/take/restore, RPC
+//!   startup, plugin bridging) are logged as warnings; the Engine attempts to
+//!   continue in degraded mode where feasible.
+//! - Comprehensive runtime metrics are tracked in SharedStats (execs, crashes,
+//!   hangs, restores, desockets, new states/paths, coverage edges) and reported
+//!   periodically and at shutdown.
+//!
+//! Plugins & scripting bridges
+//! ---------------------------
+//! - The Engine integrates plugin-provided protocol models and optional Python
+//!   bridges for oracle, integrity, mutator extras, and encryptor functionality.
+//! - An RPC control socket (when configured) exposes an RpcServer that can alter
+//!   campaign state and query runtime statistics; Engine will wait briefly for
+//!   Python protocol registration when RPC is active.
+//!
+//! Platform notes
+//! --------------
+//! - Signal handling relies on libc SIGINT/SIGTERM registration (see
+//!   install_signal_handlers). This module expects a POSIX-like environment.
+//! - Network re-execution (used by minimizer) supports both TCP and UDP paths.
+//!
+//! Side-effects
+//! ------------
+//! - Writes crash/hang/minimized testcases into the configured output directory.
+//! - Emits NXS events via crate::nxs::on_event for external tooling and reporting.
+//!
+//! See Also
+//! --------
+//! - snapshot.rs: SnapshotProvider implementations and backend details.
+//! - worker.rs: Worker lifecycle and execution loop.
+//! - monitor/minimizer.rs: Minimization and re-execution helpers.
 
 use crate::common::config::Config;
 use crate::common::error::Result;
