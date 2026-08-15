@@ -35,7 +35,7 @@
 //!   - Connection reuse policy:
 //!       * Uses ReusePolicy to decide reuse vs. desocket vs. full reconnect.
 //!       * Updates policy after every execution via reuse.update(&result).
-!
+//!
 //! Concurrency & safety model:
 //!   - Worker threads are created with std::thread::Builder and named.
 //!   - Shared state is passed via Arc and atomics (SharedStats uses AtomicU64).
@@ -47,8 +47,8 @@
 //! Performance considerations:
 //!   - The main loop avoids expensive blocking operations; when the corpus
 //!     scheduler returns None, the worker sleeps a short interval (5ms).
-!//    - Connection decisions attempt cheap protocol-level desocket resets to
-//!      avoid full TCP reconnects when possible, reducing per-iteration cost.
+//!   - Connection decisions attempt cheap protocol-level desocket resets to
+//!     avoid full TCP reconnects when possible, reducing per-iteration cost.
 //!   - Coverage collection and tracker updates are performed inline and are
 //!     expected to be lightweight; heavy weight tasks should be offloaded.
 //!
@@ -59,7 +59,7 @@
 //!     state hashes; interesting inputs are reinserted into the corpus with
 //!     adjusted energy accounting (cost-aware boosts when a reconnect/desocket
 //!     cost was paid).
-!
+//!
 //! Integration points & helper functions:
 //!   - resolve_desocket_from_model(model) -> Box<dyn ProtocolReset>
 //!   - Mutator, Encryptor, IntegrityRepair interfaces (bridged via scripting)
