@@ -1,9 +1,9 @@
 id = "crash/auth-escalation"
 name = "auth-escalation"
-version = "1.0.0"
+version = "1.1.0"
 categories = ["crash", "intrusive"]
 events = ["crash"]
-description = "Protocol-aware post-anomaly privilege and command escalation probe (FTP/SMTP/HTTP). After a crash or interesting event, attempts sequences that normally require higher privilege or authenticated elevated state: FTP SITE/RETR sensitive paths/CWD traversal, SMTP VRFY/EXPN/MAIL escalation, HTTP privileged paths/methods/Basic auth. Exit 2 when an unauthorized-looking successful transition or elevated response is observed. Intrusive. Distinct from auth-bypass."
+description = "Protocol-aware post-anomaly privilege and command escalation probe (FTP/SMTP/HTTP). After a crash or interesting event, attempts elevated sequences (FTP SITE/RETR/CWD, SMTP VRFY/EXPN/MAIL, HTTP privileged paths/methods/Basic). Phase 2 adds confidence scoring (high/medium/low), per-shot artefacts under --out/shots/, and rich report.extra. Exit 2 on escalation signal. Intrusive. Distinct from auth-bypass."
 language = "rust"
 entry = "bin/nxs-auth-escalation"
 
