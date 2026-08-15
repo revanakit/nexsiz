@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 12/08/2026
-//! Module  : nexsiz::src::coverage::shm
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::coverage::shm
 //!
 //! Compatibility layer for POSIX Shared-Memory Coverage Map.
 //!
