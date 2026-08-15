@@ -3,18 +3,43 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::coverage::shm
 //!
-//! Compatibility layer for POSIX Shared-Memory Coverage Map.
 //!
-//! (2026-08-13)**: The canonical implementation has moved to
-//! `crate::platform` (LinuxSharedMemory). This module now provides a thin
-//! adapter so existing call sites that still reference `coverage::shm::ShmMap`
-//! continue to compile. New code should use:
+//! Purpose
+//! -------
+//! Compatibility shim providing a backward-compatible handle (`ShmMap`) for the
+//! legacy POSIX shared-memory coverage map API. This module delegates all
+//! operations to the platform abstraction layer (`crate::platform::SharedMemory`)
+//! so existing call sites that reference `coverage::shm::ShmMap` continue to
+//! compile and behave as before while the canonical implementation lives in
+//! `crate::platform`.
+//!
+//! Guarantees & Semantics
+//! ----------------------
+//! - This type is a thin adapter: it does not implement coverage storage
+//!   itself but forwards calls to a boxed `SharedMemory` implementation supplied
+//!   by the platform layer.
+//! - Error propagation follows the platform implementation; `open` returns a
+//!   `Result<ShmMap, String>` where the error is the platform error converted
+//!   to a string.
+//! - Not intended for new code. Treat this module as a transitional compatibility
+//!   layer that will be removed once all users migrate to the platform API.
+//!
+//! Migration / Recommended Usage
+//! ---------------------------
+//! Instead of using this adapter directly in new code, call into the platform
+//! API which exposes the canonical coverage map factory. Example:
 //!
 //! ```ignore
-//! platform::current().create_coverage_map(id)
+//! // preferred: create a platform-native coverage map
+//! platform::current().create_coverage_map(id)?
 //! ```
 //!
-//! The adapter will be removed once all call sites have migrated.
+//! Deprecation Notice
+//! ------------------
+//! As of 2026-08-13 this module is deprecated in favor of `crate::platform`'s
+//! implementations (e.g. `LinuxSharedMemory`). Keep usage here only to support
+//! legacy call sites; remove references and migrate to `platform::current()`
+//! as part of ongoing refactoring.
 
 use crate::platform::{self, SharedMemory};
 
