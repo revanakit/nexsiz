@@ -133,6 +133,8 @@ Once the engine surfaces a crash, hang, or other interesting event, optional **N
 | `crash/state-diff` | Multi-shot response signature comparison (class, hash, length, timing, status codes) |
 | `crash/coverage-probe` | Path-diversity behavioural probe (fingerprints as coverage proxy) |
 | `crash/auth-bypass` | Protocol-aware auth sequence injection (FTP / SMTP / HTTP heuristics) |
+| `crash/auth-escalation` | Post-anomaly privilege / command escalation (FTP SITE/RETR, SMTP VRFY/EXPN, HTTP admin paths) |
+| `crash/chain-repro` | Multi-shot chain escalation (leak, class transition, response divergence) |
 | `hang/timeout-analyzer` | Multi-shot classification of hard hangs |
 | `external/notify-webhook` | Compact HTTP POST of event metadata |
 
