@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/scripting/handler.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::scripting::handler
 //!
 //! RPC command handler – campaign control + all plugin bridges + structured seeds.
 
