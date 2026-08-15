@@ -2,7 +2,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! AUTHOR     ::     Revana 
-//! MODULE     ::     src::python::nexsiz_client
+//! MODULE     ::     python::nexsiz_client
 //!
 """
 #!/usr/bin/env python3
