@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
-//! 
-//! Author  : Revana
-//! Date    : 14/08/2026
-//! Module  : nexsiz::src::coverage::map
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::coverage::map
 //!
 //! High-performance edge coverage tracking system with hybrid feedback support.
 //!
