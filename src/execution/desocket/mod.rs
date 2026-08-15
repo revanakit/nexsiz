@@ -1,6 +1,7 @@
-//! NEXSIZ – Desocketing / protocol-level socket state isolation
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::desocket::mod
 //!
 //! Snapshot / Desocketing track (complete + JSON-driven extension):
 //!   Phase 2 – ProtocolReset trait, BuiltinDesocket, SocketState
