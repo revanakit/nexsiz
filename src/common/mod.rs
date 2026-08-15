@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Module  : nexsiz::src::common::mod
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::common::mod
 
 pub mod config;
 pub mod error;
