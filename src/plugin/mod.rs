@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 08/08/2026
-//! Files   : nexsiz/src/plugin/mod.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::plugin::mod
 //!
 //! NEXSIZ – Plugin architecture
 //! 
