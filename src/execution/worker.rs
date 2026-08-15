@@ -3,17 +3,83 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::worker
 //!
-//! Repair ownership (exactly one stage, live-safe):
-//!   1. IntegrityBridge active  → bridge.repairer().prepare_for_send()
-//!   2. else cfg.repair_integrity → integrity::prepare_for_send(model_name)
-//!   3. else none
-//! Mutator internal repair is always OFF in production workers.
+//! Purpose:
+//!   Worker thread orchestration for the NEXSIZ fuzzing engine. This module
+//!   implements worker lifecycle management, per-worker mutation & sending
+//!   logic, protocol-level desocket/reconnect decisioning, integration with
+//!   encryption/integrity bridges, and result publication to the central
+//!   engine via a channel.
 //!
-//! Protocol Phase 3: template_prob / on_interesting field energy.
-//! Snapshot/Desocket Phase 2: ProtocolReset + SocketState via ReusePolicy.
-//! Snapshot/Desocket Phase 3: restore_epoch orchestration, cost-aware energy,
-//!   desocket/restore counters.
-//! Snapshot/Desocket Phase 4: resolve_desocket_from_model (JSON SpecDesocket).
+//! High-level responsibilities:
+//!   - spawn_workers(...): create and start a configurable number of worker
+//!     threads, wiring shared resources (SharedCorpus, trackers, predictor,
+//!     shared stats, bridges, and stop controls) via Arc/clone semantics.
+//!   - worker_main(...): hot-loop executed by each worker — schedules corpus
+//!     entries, generates mutations, optionally repairs/integrates them,
+//!     optionally encrypts, decides connection reuse/desocket vs reconnect,
+//!     executes network IO (TCP/UDP), collects coverage, updates trackers,
+//!     and forwards ExecutionResult to the engine.
+//!
+//! Key behaviours and phases:
+//!   - Integrity repair pathway (runtime bridge or configured fallback):
+//!       1) If IntegrityBridge active → bridge.repairer().prepare_for_send()
+//!       2) Else if cfg.repair_integrity → integrity::prepare_for_send(model_name)
+//!       3) Else no repair (mutator internal repair is disabled in production).
+//!   - Snapshot / Desocket orchestration:
+//!       * Phase 2: prefer protocol-level desocket reset when the ReusePolicy
+//!         indicates pollution and the model supplies a ProtocolReset.
+//!       * Phase 3: post-restore epoch handling — workers observe a shared
+//!         restore_epoch to force reconnects after engine-triggered restores.
+//!       * Phase 4: resolve_desocket_from_model(...) reads model-specific
+//!         desocket specifications when available.
+//!   - Connection reuse policy:
+//!       * Uses ReusePolicy to decide reuse vs. desocket vs. full reconnect.
+//!       * Updates policy after every execution via reuse.update(&result).
+!
+//! Concurrency & safety model:
+//!   - Worker threads are created with std::thread::Builder and named.
+//!   - Shared state is passed via Arc and atomics (SharedStats uses AtomicU64).
+//!   - Results are published over a std::sync::mpsc::Sender<ExecutionResult>.
+//!   - A shared AtomicBool stop flag allows cooperative termination.
+//!   - Per-worker RNG seeds are derived deterministically from the base seed
+//!     plus a worker-specific offset to preserve reproducibility.
+//!
+//! Performance considerations:
+//!   - The main loop avoids expensive blocking operations; when the corpus
+//!     scheduler returns None, the worker sleeps a short interval (5ms).
+!//    - Connection decisions attempt cheap protocol-level desocket resets to
+//!      avoid full TCP reconnects when possible, reducing per-iteration cost.
+//!   - Coverage collection and tracker updates are performed inline and are
+//!     expected to be lightweight; heavy weight tasks should be offloaded.
+//!
+//! Observability & metrics:
+//!   - SharedStats tracks execs, crashes, hangs, new paths/states, restores,
+//!     desockets, and a monotonic restore_epoch for cross-thread orchestration.
+//!   - Each execution emits an ExecutionResult populated with coverage and
+//!     state hashes; interesting inputs are reinserted into the corpus with
+//!     adjusted energy accounting (cost-aware boosts when a reconnect/desocket
+//!     cost was paid).
+!
+//! Integration points & helper functions:
+//!   - resolve_desocket_from_model(model) -> Box<dyn ProtocolReset>
+//!   - Mutator, Encryptor, IntegrityRepair interfaces (bridged via scripting)
+//!   - apply_integrity(...) : local helper to choose between bridge or
+//!     configured integrity repair and to invoke prepare_for_send.
+//!   - error_result(seed_id, err) : canonical ExecutionResult used on IO errors.
+//!
+//! Notes & invariants:
+//!   - Mutator internal repair is intentionally disabled for production workers;
+//!     integrity repair should be provided either via bridge or cfg flag.
+//!   - update reuse policy AFTER each execution to keep messages_on_conn and
+//!     failure counters consistent with actual network traffic.
+//!   - The worker loop maintains per-iteration bookkeeping (prev_state,
+//!     predictor.observe, corpus rarity boosts) to prioritize promising inputs.
+//!
+//! See also:
+//!   - crate::execution::reuse for ReusePolicy and socket-state semantics.
+//!   - crate::execution::desocket for ProtocolReset and reset_or_reconnect logic.
+//!   - crate::input::{mutator, model, integrity} and scripting bridges for
+//!     mutation/encryption/integrity workflows.
 
 use crate::common::config::Config;
 use crate::common::types::*;
