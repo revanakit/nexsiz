@@ -27,7 +27,7 @@ Design priorities are explicit: precision over volume, structural integrity afte
 
 **Known limitations (v0.1.0)**
 - Frida / shared-memory coverage and CRIU snapshot are Linux-only.
-- Snapshot restore is Phase-1 (process kill+respawn or CRIU); full desocketing is ongoing.
+- Snapshot + desocketing track is complete (Null / ProcessRestart / CRIU + ProtocolReset / BuiltinDesocket); defaults remain off (zero behaviour change).
 - Webhook NXS uses a pure-stdlib HTTP client (no HTTPS); terminate TLS at a local proxy if needed.
 - Rate limits and cooldowns are conservative by default — tune for your environment.
 
