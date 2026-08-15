@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 08/08/2026
-//! Files   : nexsiz/src/plugin/protocol.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::plugin::protocol
 //!
 //! NEXSIZ – Protocol plugins (built-in + grammar-based + JSON models)
 //! Phase 4: JSON `desocket` block → ProtocolModel.desocket (SpecDesocket)
