@@ -1,6 +1,7 @@
-//! NEXSIZ – Intelligent Connection Reuse + Desocket awareness
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::reuse
 //!
 //! The key idea: after a successful execution that leaves the target in a
 //! known "safe" state, subsequent test cases that share a common safe
