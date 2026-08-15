@@ -3,6 +3,48 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::connector
 //!
+//! Purpose:
+//!   Implements low-level network connectors and execution harnesses used by
+//!   the fuzzer to drive stateful protocol interactions over TCP and UDP.
+//!   This module provides:
+//!     - TcpConnector: a blocking TCP connector with per-operation timeouts,
+//!       optional connection reuse, and a two-stage receive strategy to
+//!       differentiate slow responders from hangs.
+//!     - UdpConnector: a simple UDP send/receive wrapper with configurable
+//!       timeouts and ephemeral local binding.
+//!     - execute_tcp / execute_udp: higher-level routines that drive a
+//!       TestCase (sequence of messages), collect responses, compute a
+//!       deterministic state hash, and map observed conditions to OutcomeClass.
+//!     - extract_response_code: heuristic helper to extract numeric response
+//!       codes from protocol replies (human-readable or binary).
+//!
+//! Key behaviors and guarantees:
+//!   - Connect/bind operations configure per-operation read/write timeouts.
+//!   - TcpConnector.recv uses a primary read (configured timeout) and, on
+//!     timeout, performs a short probe (timeout/4) to distinguish slow
+//!     responses from hang-like behavior. Empty reads are treated as
+//!     connection-closed events.
+//!   - Error handling maps OS and I/O errors into NexsizError variants so the
+//!     execution harness can classify outcomes (Ok, Hang, ConnectionReset,
+//!     Error, etc.).
+//!   - The connectors are intentionally minimal and blocking; callers must
+//!     provide exclusive mutable access (not thread-safe by default).
+//!
+//! Usage (summary):
+//!   - TCP: let mut c = TcpConnector::new(addr, timeout); c.connect()?;
+//!          c.send(&data)?; let (resp, timed_out) = c.recv(max_len)?;
+//!   - UDP: let mut u = UdpConnector::new(addr, timeout); u.bind()?;
+//!          u.send(&data)?; let (resp, timed_out) = u.recv(max_len)?;
+//!
+//! Testing:
+//!   - Unit tests at the bottom of the file exercise basic construction and
+//!     the response-code extraction logic. Integration tests against live
+//!     network services should be isolated and optional in CI.
+//!
+//! Maintenance notes:
+//!   - Keep timeouts symmetric between connect/read/write where appropriate.
+//!   - When adjusting the probe strategy, ensure execute_tcp preserves its
+//!     semantic mapping of probe timeouts -> OutcomeClass::Hang vs Ok.
 
 use crate::common::error::{NexsizError, Result};
 use crate::common::types::{ExecutionResult, OutcomeClass, TestCase};
