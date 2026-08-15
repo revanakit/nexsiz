@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 14/08/2026
-//! Module  : nexsiz::src::platform::linux
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::platfrom::linux
 //!
 //! Linux POSIX shared-memory coverage provider.
 //!
