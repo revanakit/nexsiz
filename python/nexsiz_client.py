@@ -1,3 +1,10 @@
+"""
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::python::nexsiz_client
+//!
+"""
 #!/usr/bin/env python3
 """
 Nexsiz RPC client – campaign control, oracle, protocol, integrity, encryptor,
