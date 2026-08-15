@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 04/08/2026
-//! Module  : nexsiz::src::monitor::logger
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::monitor::logger
 //!
 //! Structured event logging and real-time console status reporting for fuzzing campaigns.
 //!
