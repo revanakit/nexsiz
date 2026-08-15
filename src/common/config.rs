@@ -1,7 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
 //! AUTHOR     ::     Revana 
-//! MODULE     ::     src:: common::config
+//! MODULE     ::     src::common::config
 //!
 //! NEXSIZ Configuration Module
 //!
