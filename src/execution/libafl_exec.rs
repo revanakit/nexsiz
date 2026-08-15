@@ -3,16 +3,64 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::libafl_exec
 //!
-//! CRITICAL (LibAFL 0.15):
-//!   - ObserversTuple is implemented for `()` and `(Head, Tail)` where Tail is
-//!     itself an ObserversTuple. Always use `tuple_list!(obs)` → `(Obs, ())`.
-//!   - MaxMapFeedback looks up its observer **by name** inside the executor's
-//!     observer list. The StdMapObserver instance passed to MaxMapFeedback::new
-//!     MUST be the same instance (same name) that is later moved into the
-//!     executor. A detached/from_mut_ptr observer that never enters the tuple
-//!     causes `Option::unwrap()` panic in map.rs during evaluation.
-//!   - StdMapObserver<'a, T, const DIFFERENTIAL: bool> — we use u8 + false
-//!     (classic hitcounts map, non-differential).
+//! Purpose:
+//!   Implements a LibAFL-compatible network executor that adapts NEXSIZ's
+//!   stateful message TestCase model to LibAFL's BytesInput executor API.
+//!   This module is responsible for:
+//!     - Translating raw input bytes into NEXSIZ TestCase(s).
+//!     - Driving TCP/UDP connectors and applying the configured reuse policy.
+//!     - Folding behavioural \"response\" observations into a process-global
+//!       hitcount-style map exposed via StdMapObserver for feedback and
+//!       triage (behavioural coverage / response clustering).
+//!
+//! Key types and exports:
+//!   - ResponseMapObserver: StdMapObserver<'static, u8, false> — canonical
+//!     hitcounts-style map observer used by feedbacks.
+//!   - NexsizObservers: tuple containing the single response map observer.
+//!   - NexsizNetworkExecutor: Executor implementation that executes
+//!     BytesInput by sending network messages and updating observers.
+//!   - make_response_observer(): creates a process-lifetime response map and
+//!     returns a StdMapObserver pointing to it.
+//!   - build_default_executor(): constructs an executor with a fresh observer.
+//!   - build_executor_with_observer(): constructs an executor from an existing
+//!     StdMapObserver (useful when sharing the same observer instance with
+//!     feedbacks like MaxMapFeedback).
+//!
+//! Important implementation notes & compatibility (LibAFL 0.15):
+//!   - Observers tuple shape: libafl expects observers as a nested tuple:
+//!     `()` or `(Head, Tail)` where Tail is itself an ObserversTuple. Use
+//!     `tuple_list!(obs)` so the resulting type matches `(Obs, ())`.
+//!   - StdMapObserver and MaxMapFeedback: MaxMapFeedback resolves its map
+//!     observer by name inside the executor's observer list. The StdMapObserver
+//!     instance passed to MaxMapFeedback::new MUST be the same instance (same
+//!     name) that is later moved into the executor. Using a distinct or detached
+//!     observer will lead to an unwrap panic at evaluation time.
+//!   - Lifetime & safety: make_response_observer() intentionally leaks a
+//!     boxed slice to produce a `'static` mutable pointer for StdMapObserver.
+//!     This is deliberate: a single, process-global map is sufficient for the
+//!     single-core LibAFL path. The leak is documented and the observer is
+//!     created via unsafe from_mut_ptr — do not change this contract without
+//!     ensuring the observer instance and its backing memory remain valid.
+//!   - Map semantics: map stores u8 hitcounts (non-differential). Special
+//!     reserved slots near the map end are used to aggregate crashes/hangs.
+//!
+//! Behavioural folding (observe_into_map):
+//!   - Response codes and state/coverage hashes are folded into a 64-bit
+//!     accumulator and reduced modulo the map size to produce a slot index.
+//!   - The accumulator combines response_codes, state_hash and optionally
+//!     coverage_map_hash to create a compact behavioural signature.
+//!
+//! Safety & robustness:
+//!   - The module converts network errors into a canonical ExecutionResult and
+//!     updates the reuse policy accordingly; no panics should be triggered by
+//!     normal network failures.
+//!   - The only explicit unsafe is the StdMapObserver::from_mut_ptr call which
+//!     relies on the leaked backing array staying valid for the process lifetime.
+//!
+//! See also:
+//!   - crate::execution::connector for TCP/UDP send/receive helpers.
+//!   - crate::execution::reuse for connection reuse policy and heuristics.
+//!   - LibAFL docs for details on Executor, Observer, and feedback wiring.
 
 use crate::common::config::TargetConfig;
 use crate::common::types::{ExecutionResult, OutcomeClass, TestCase};
