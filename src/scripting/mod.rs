@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/scripting/mod.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::scripting::mod
 //!
 //! NEXSIZ – Python scripting / RPC campaign control surface
 
