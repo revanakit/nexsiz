@@ -1,6 +1,11 @@
-# Rust build artifacts
+# Rust build artefacts
 /target/
+**/target/
 **/*.rs.bk
+
+# NXS per-script cargo targets
+nxs/src/*/target/
+nxs/bin/nxs-*
 
 # Output / corpus / logs produced by fuzzing campaigns
 /output/
@@ -8,10 +13,13 @@
 *.log
 nexsiz.log
 
-# Crash / hang artifacts
+# Crash / hang / queue artefacts
 **/crashes/
 **/hangs/
 **/queue/
+nxs-meta/
+nxs-out/
+nxs-findings/
 
 # IDE / editor
 .idea/
