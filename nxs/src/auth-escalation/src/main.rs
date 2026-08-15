@@ -6,7 +6,7 @@
 //!               that normally require higher privilege or an authenticated
 //!               elevated state.
 //!
-//! Primary     : FTP, SMTP, HTTP (Phase 1 focus)
+//! Primary     : FTP, SMTP, HTTP
 //! Fallback    : generic (minimal)
 //!
 //! Exit 2      : Unauthorized-looking elevated success observed → escalate.
@@ -14,13 +14,14 @@
 //! Exit 1      : Operational error.
 //! Exit 3      : Internal timeout budget exhausted.
 //!
+//! Phase 2     : Confidence scoring, per-shot artefacts, rich report.extra
+//!
 //! Design (red-team grade):
 //! - Bounded probe set and wall budget.
 //! - Pure TCP (stdlib only + nxs-lib).
 //! - Conservative signals; prefer clear success codes.
 //! - Intrusive category.
-//! - Distinct from auth-bypass: here we try elevated commands / paths
-//!   after an anomaly, not merely unauthenticated entry.
+//! - Distinct from auth-bypass: elevated commands / paths after anomaly.
 
 use nxs_lib::{
     args::Args,
@@ -28,13 +29,15 @@ use nxs_lib::{
     meta::{self, Meta},
     report::Report,
 };
+use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 const NXS_ID: &str = "crash/auth-escalation";
-const NXS_VERSION: &str = "1.0.0";
+const NXS_VERSION: &str = "1.1.0";
 const DEFAULT_TIMEOUT_SECS: u64 = 20;
 const MAX_PROBES: usize = 12;
 
@@ -104,32 +107,76 @@ fn run(args: &Args, meta: &Meta) {
 
     let probes = build_escalation_probes(&model, &payload);
     let mut findings: Vec<String> = Vec::new();
+    let mut shots: Vec<ShotRecord> = Vec::new();
+    let mut artifact_paths: Vec<String> = Vec::new();
     let mut escalated = false;
+    let mut max_confidence = Confidence::None;
 
-    for (name, data) in probes.iter().take(MAX_PROBES) {
+    // Optional artefact directory
+    let shots_dir = args.out.as_ref().map(|o| o.join("shots"));
+    if let Some(ref dir) = shots_dir {
+        let _ = fs::create_dir_all(dir);
+    }
+
+    for (idx, (name, data)) in probes.iter().take(MAX_PROBES).enumerate() {
         if budget.elapsed() > timeout {
             findings.push("probe budget exhausted".into());
             break;
         }
+
         let outcome = probe(&target, data, timeout, args.verbose);
+        let conf = score_confidence(&model, name, &outcome);
+        let signal = conf != Confidence::None;
+
         args.log(&format!(
-            "probe={} class={:?} codes={:?} detail={}",
-            name, outcome.class, outcome.codes, outcome.detail
+            "probe={} class={:?} codes={:?} conf={:?} detail={}",
+            name, outcome.class, outcome.codes, conf, outcome.detail
         ));
 
-        if is_escalation_signal(&model, name, &outcome) {
+        // Persist request/response artefact when --out is set
+        if let Some(ref dir) = shots_dir {
+            if let Ok(rel) = save_shot_artifact(dir, idx, name, data, &outcome) {
+                artifact_paths.push(rel);
+            }
+        }
+
+        shots.push(ShotRecord {
+            name: name.clone(),
+            class: format!("{:?}", outcome.class),
+            codes: outcome.codes.clone(),
+            confidence: conf.as_str().to_string(),
+            detail: outcome.detail.clone(),
+            signal,
+        });
+
+        if signal {
             escalated = true;
+            if conf > max_confidence {
+                max_confidence = conf;
+            }
             findings.push(format!(
-                "escalation signal on '{}': class={:?} codes={:?} ({})",
-                name, outcome.class, outcome.codes, outcome.detail
+                "[{}] escalation on '{}': codes={:?} ({})",
+                conf.as_str(),
+                name,
+                outcome.codes,
+                outcome.detail
             ));
         }
     }
 
+    let elapsed_ms = budget.elapsed().as_millis() as u64;
+    let signal_count = shots.iter().filter(|s| s.signal).count();
+
     let (exit, summary): (ExitCode, String) = if escalated {
         (
             ExitCode::Escalate,
-            format!("Auth-escalation signal(s) on model '{}'", model),
+            format!(
+                "Auth-escalation signal(s) on model '{}' (confidence={}, signals={}/{})",
+                model,
+                max_confidence.as_str(),
+                signal_count,
+                shots.len()
+            ),
         )
     } else if budget.elapsed() > timeout {
         (ExitCode::Timeout, "Budget exhausted".into())
@@ -140,7 +187,20 @@ fn run(args: &Args, meta: &Meta) {
         )
     };
 
-    finish(args, &target, crash_id, exit, &summary, &findings);
+    finish(
+        args,
+        &target,
+        crash_id,
+        exit,
+        &summary,
+        &findings,
+        &shots,
+        &artifact_paths,
+        &model,
+        max_confidence,
+        signal_count,
+        elapsed_ms,
+    );
 }
 
 fn finish(
@@ -150,15 +210,35 @@ fn finish(
     exit: ExitCode,
     summary: &str,
     findings: &[String],
+    shots: &[ShotRecord],
+    artifact_paths: &[String],
+    model: &str,
+    max_confidence: Confidence,
+    signal_count: usize,
+    elapsed_ms: u64,
 ) -> ! {
     let mut report = Report::new(NXS_ID, NXS_VERSION)
         .with_target(target)
         .with_crash_id(crash_id)
         .with_exit_hint(exit)
         .with_summary(summary);
+
     for f in findings {
         report.add_finding(f.clone());
     }
+    for a in artifact_paths {
+        report.add_artifact(a.clone());
+    }
+
+    // Rich structured extra (Phase 2)
+    report.extra = Some(json!({
+        "model": model,
+        "confidence": max_confidence.as_str(),
+        "signal_count": signal_count,
+        "shot_count": shots.len(),
+        "elapsed_ms": elapsed_ms,
+        "shots": shots,
+    }));
 
     if let Some(out) = &args.out {
         match report.write(out) {
@@ -173,21 +253,175 @@ fn finish(
 }
 
 // ---------------------------------------------------------------------------
-// Escalation probe construction — Phase 1 (FTP / SMTP / HTTP)
+// Phase 2 types: confidence + shot record
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Confidence {
+    None = 0,
+    Low = 1,
+    Medium = 2,
+    High = 3,
+}
+
+impl Confidence {
+    fn as_str(self) -> &'static str {
+        match self {
+            Confidence::None => "none",
+            Confidence::Low => "low",
+            Confidence::Medium => "medium",
+            Confidence::High => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct ShotRecord {
+    name: String,
+    class: String,
+    codes: Vec<u16>,
+    confidence: String,
+    detail: String,
+    signal: bool,
+}
+
+/// Score how strong an escalation signal is for this probe outcome.
+fn score_confidence(model: &str, probe_name: &str, outcome: &ProbeOutcome) -> Confidence {
+    if outcome.class != Class::Responded {
+        return Confidence::None;
+    }
+    let codes = &outcome.codes;
+
+    match model {
+        "ftp" | "grammar-ftp" | "g-ftp" => {
+            if !(probe_name.contains("site")
+                || probe_name.contains("retr")
+                || probe_name.contains("list")
+                || probe_name.contains("cwd")
+                || probe_name.contains("elevated"))
+            {
+                return Confidence::None;
+            }
+            // SITE EXEC / CHMOD / RETR passwd|shadow with 200/250 → high
+            if (probe_name.contains("exec")
+                || probe_name.contains("chmod")
+                || probe_name.contains("passwd")
+                || probe_name.contains("shadow"))
+                && codes.iter().any(|c| matches!(*c, 200 | 250))
+            {
+                return Confidence::High;
+            }
+            if codes.iter().any(|c| matches!(*c, 200 | 250 | 257)) {
+                return Confidence::Medium;
+            }
+            Confidence::None
+        }
+        "smtp" | "grammar-smtp" | "g-smtp" => {
+            if !(probe_name.contains("vrfy")
+                || probe_name.contains("expn")
+                || probe_name.contains("mail"))
+            {
+                return Confidence::None;
+            }
+            // VRFY/EXPN root/admin returning 250 is strong
+            if (probe_name.contains("root") || probe_name.contains("admin"))
+                && codes.iter().any(|c| *c == 250)
+            {
+                return Confidence::High;
+            }
+            if codes.iter().any(|c| matches!(*c, 250 | 252)) {
+                return Confidence::Medium;
+            }
+            Confidence::None
+        }
+        "http" | "grammar-http" | "g-http" => {
+            let elevated_path = probe_name.contains("admin")
+                || probe_name.contains("status")
+                || probe_name.contains("info")
+                || probe_name.contains("manager");
+            let dangerous_method = probe_name.contains("put")
+                || probe_name.contains("delete")
+                || probe_name.contains("trace");
+            let basic = probe_name.contains("basic");
+
+            if elevated_path && codes.iter().any(|c| matches!(*c, 200 | 204)) {
+                return Confidence::High;
+            }
+            if dangerous_method && codes.iter().any(|c| matches!(*c, 200 | 201 | 204)) {
+                return Confidence::High;
+            }
+            if basic && codes.iter().any(|c| matches!(*c, 200 | 204)) {
+                return Confidence::Medium;
+            }
+            if (elevated_path || dangerous_method || basic)
+                && codes
+                    .iter()
+                    .any(|c| matches!(*c, 200 | 201 | 204 | 301 | 302 | 307))
+            {
+                return Confidence::Medium;
+            }
+            if (probe_name.contains("options") || probe_name.contains("trace"))
+                && codes.iter().any(|c| *c == 200)
+            {
+                return Confidence::Low;
+            }
+            Confidence::None
+        }
+        _ => {
+            if (probe_name.contains("root") || probe_name.contains("admin"))
+                && codes.iter().any(|c| matches!(*c, 200 | 230 | 250))
+            {
+                return Confidence::Low;
+            }
+            Confidence::None
+        }
+    }
+}
+
+/// Write request + response metadata for one shot under out/shots/.
+fn save_shot_artifact(
+    dir: &Path,
+    idx: usize,
+    name: &str,
+    request: &[u8],
+    outcome: &ProbeOutcome,
+) -> Result<String, String> {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+    let base = format!("{:02}_{}", idx, safe);
+
+    let req_path = dir.join(format!("{}.req", base));
+    fs::write(&req_path, request).map_err(|e| e.to_string())?;
+
+    let meta_path = dir.join(format!("{}.json", base));
+    let meta = json!({
+        "name": name,
+        "class": format!("{:?}", outcome.class),
+        "codes": outcome.codes,
+        "detail": outcome.detail,
+        "request_len": request.len(),
+    });
+    fs::write(
+        &meta_path,
+        serde_json::to_string_pretty(&meta).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(format!("shots/{}.req", base))
+}
+
+// ---------------------------------------------------------------------------
+// Escalation probe construction — FTP / SMTP / HTTP
 // ---------------------------------------------------------------------------
 
 fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut v = Vec::new();
-
-    // Baseline reference
     v.push(("original".into(), original.to_vec()));
 
     match model {
-        // =================================================================
-        // FTP — elevated commands & sensitive paths after anomaly
-        // =================================================================
         "ftp" | "grammar-ftp" | "g-ftp" => {
-            // SITE family (often restricted to admin)
             v.push((
                 "ftp_site_help".into(),
                 b"USER anonymous\r\nPASS guest\r\nSITE HELP\r\nQUIT\r\n".to_vec(),
@@ -200,8 +434,6 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 "ftp_site_chmod".into(),
                 b"USER anonymous\r\nPASS guest\r\nSITE CHMOD 777 /\r\nQUIT\r\n".to_vec(),
             ));
-
-            // Sensitive path retrieval / listing
             v.push((
                 "ftp_retr_passwd".into(),
                 b"USER anonymous\r\nPASS guest\r\nRETR /etc/passwd\r\nQUIT\r\n".to_vec(),
@@ -218,15 +450,11 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 "ftp_list_etc".into(),
                 b"USER anonymous\r\nPASS guest\r\nCWD /etc\r\nLIST\r\nQUIT\r\n".to_vec(),
             ));
-
-            // Directory traversal / privilege path
             v.push((
                 "ftp_cwd_traversal".into(),
                 b"USER anonymous\r\nPASS guest\r\nCWD /\r\nCWD ../\r\nCWD ../../\r\nPWD\r\nQUIT\r\n"
                     .to_vec(),
             ));
-
-            // After original payload — try elevated follow-up
             if !original.is_empty() {
                 let mut p = original.to_vec();
                 if !p.ends_with(b"\n") {
@@ -236,12 +464,7 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 v.push(("ftp_orig_then_elevated".into(), p));
             }
         }
-
-        // =================================================================
-        // SMTP — information disclosure & relay / command escalation
-        // =================================================================
         "smtp" | "grammar-smtp" | "g-smtp" => {
-            // Classic info-leak / privilege probes
             v.push((
                 "smtp_vrfy_root".into(),
                 b"EHLO localhost\r\nVRFY root\r\nQUIT\r\n".to_vec(),
@@ -258,8 +481,6 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 "smtp_expn_admin".into(),
                 b"EHLO localhost\r\nEXPN admin\r\nQUIT\r\n".to_vec(),
             ));
-
-            // Open-relay / privileged MAIL style
             v.push((
                 "smtp_mail_root".into(),
                 b"EHLO localhost\r\nMAIL FROM:<root@localhost>\r\nRCPT TO:<postmaster>\r\nDATA\r\nSubject: test\r\n\r\ntest\r\n.\r\nQUIT\r\n"
@@ -269,8 +490,6 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 "smtp_mail_empty_from".into(),
                 b"EHLO localhost\r\nMAIL FROM:<>\r\nRCPT TO:<postmaster>\r\nQUIT\r\n".to_vec(),
             ));
-
-            // After original — inject VRFY/EXPN
             if !original.is_empty() {
                 let mut p = original.to_vec();
                 if !p.ends_with(b"\n") {
@@ -280,12 +499,7 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 v.push(("smtp_orig_then_vrfy".into(), p));
             }
         }
-
-        // =================================================================
-        // HTTP — privileged paths, methods, and header escalation
-        // =================================================================
         "http" | "grammar-http" | "g-http" => {
-            // Common admin / status surfaces
             v.push((
                 "http_admin".into(),
                 b"GET /admin HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".to_vec(),
@@ -309,8 +523,6 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 b"GET /manager/html HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
                     .to_vec(),
             ));
-
-            // Dangerous / elevated methods
             v.push((
                 "http_put".into(),
                 b"PUT /test_nxs.txt HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest"
@@ -329,8 +541,6 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 "http_trace".into(),
                 b"TRACE / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".to_vec(),
             ));
-
-            // Basic auth with common elevated credentials
             v.push((
                 "http_basic_admin".into(),
                 b"GET /admin HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46YWRtaW4=\r\nConnection: close\r\n\r\n"
@@ -341,15 +551,10 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
                 b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic cm9vdDpyb290\r\nConnection: close\r\n\r\n"
                     .to_vec(),
             ));
-
             if !original.is_empty() {
                 v.push(("http_original".into(), original.to_vec()));
             }
         }
-
-        // =================================================================
-        // Fallback (non-target models) — minimal, non-aggressive
-        // =================================================================
         _ => {
             if !original.is_empty() {
                 v.push(("generic_original".into(), original.to_vec()));
@@ -360,69 +565,7 @@ fn build_escalation_probes(model: &str, original: &[u8]) -> Vec<(String, Vec<u8>
             ));
         }
     }
-
     v
-}
-
-// ---------------------------------------------------------------------------
-// Escalation signal detection — Phase 1 (tightened for FTP/SMTP/HTTP)
-// ---------------------------------------------------------------------------
-
-fn is_escalation_signal(model: &str, probe_name: &str, outcome: &ProbeOutcome) -> bool {
-    if outcome.class != Class::Responded {
-        return false;
-    }
-    let codes = &outcome.codes;
-
-    match model {
-        "ftp" | "grammar-ftp" | "g-ftp" => {
-            // 200 = Command okay, 250 = Requested file action okay,
-            // 257 = PATHNAME created / PWD reply
-            if probe_name.contains("site")
-                || probe_name.contains("retr")
-                || probe_name.contains("list")
-                || probe_name.contains("cwd")
-                || probe_name.contains("elevated")
-            {
-                return codes.iter().any(|c| matches!(*c, 200 | 250 | 257));
-            }
-            false
-        }
-        "smtp" | "grammar-smtp" | "g-smtp" => {
-            // 250 = Requested mail action okay, 252 = Cannot VRFY but will attempt
-            if probe_name.contains("vrfy")
-                || probe_name.contains("expn")
-                || probe_name.contains("mail")
-            {
-                return codes.iter().any(|c| matches!(*c, 250 | 252));
-            }
-            false
-        }
-        "http" | "grammar-http" | "g-http" => {
-            if probe_name.contains("admin")
-                || probe_name.contains("status")
-                || probe_name.contains("info")
-                || probe_name.contains("manager")
-                || probe_name.contains("put")
-                || probe_name.contains("delete")
-                || probe_name.contains("basic")
-            {
-                return codes
-                    .iter()
-                    .any(|c| matches!(*c, 200 | 201 | 204 | 301 | 302 | 307));
-            }
-            if probe_name.contains("options") || probe_name.contains("trace") {
-                return codes.iter().any(|c| *c == 200);
-            }
-            false
-        }
-        _ => {
-            if probe_name.contains("root") || probe_name.contains("admin") {
-                return codes.iter().any(|c| matches!(*c, 200 | 230 | 250));
-            }
-            false
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +619,6 @@ fn probe(target: &str, payload: &[u8], timeout: Duration, verbose: bool) -> Prob
     let _ = stream.set_write_timeout(Some(timeout));
     let mut stream = stream;
 
-    // Drain optional banner
     {
         let mut banner = [0u8; 1024];
         let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
@@ -615,6 +757,7 @@ fn print_help() {
 
 Protocol-aware post-anomaly privilege / command escalation probe.
 Primary targets: FTP, SMTP, HTTP.
+Phase 2: confidence scoring + per-shot artefacts + rich report.
 
 USAGE:
     nxs-auth-escalation --crash <path> --target <host:port> [OPTIONS]
@@ -627,7 +770,7 @@ GLOBAL OPTIONS (contract):
     --model <name>         Protocol model (ftp|smtp|http|…)
     --minimized <path>     Prefer as baseline
     --meta <path>          Nexsiz metadata JSON
-    --out <dir>            report.json
+    --out <dir>            report.json + shots/
     --timeout <secs>       Total wall budget (default: {def})
     -v, --verbose
     -h, --help
@@ -639,8 +782,7 @@ EXIT CODES:
     2  Escalation signal observed → escalate
     3  Internal timeout budget exhausted
 
-NOTE: Intrusive — contacts the live target with privilege / elevated probes.
-Distinct from auth-bypass: focuses on elevated commands and paths after anomaly.
+NOTE: Intrusive. Distinct from auth-bypass.
 "#,
         ver = NXS_VERSION,
         id = NXS_ID,
