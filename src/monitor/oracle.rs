@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 05/08/2026
-//! Module  : nexsiz::src::monitor::oracle
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::monitor::oracle
 //!
 //! NEXSIZ — Oracle core: interestingness decision logic
 //!
