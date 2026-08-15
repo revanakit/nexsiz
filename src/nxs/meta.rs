@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 09/08/2026
-//! Module  : nexsiz::src::nxs::meta
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::nxs::meta
 //!
 //! Purpose
 //! - Produce a compact JSON "meta" file describing a single engine event, implementing the minimal schema defined in nxs/CONTRACT.md §3.
