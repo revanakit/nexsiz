@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 13/08/2026
-//! Module  : nexsiz::src::input::integrity
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::input::integrity
 //!
 //! Purpose:
 //!   Provide deterministic, protocol-aware repair and normalization routines for
