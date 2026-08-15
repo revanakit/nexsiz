@@ -35,17 +35,17 @@
 //!       executes the fuzzer loop.
 //!
 //! Important implementation & compatibility notes (LibAFL 0.15):
-!//    - Observer tuple shape: libafl uses nested tuples for observers; this
-//!      module uses tuple_list!(observer) producing (Obs, ()) as expected.
-//!    - StdMapObserver & MaxMapFeedback: MaxMapFeedback records the observer
-//!      by name (e.g., "response_map") and later resolves it inside the
-//!      executor's observer list. The StdMapObserver instance passed to
-//!      MaxMapFeedback::new MUST be the same instance that is moved into the
-//!      executor — passing a different/detached observer will result in an
-//!      unwrap panic at evaluation time.
-//!    - Multi-core LLMP: multi-worker LLMP support is deferred; when cfg
-//!      requests workers > 1, the runner currently falls back to single-core
-//!      execution and prints an informational notice for reliability.
+//!   - Observer tuple shape: libafl uses nested tuples for observers; this
+//!     module uses tuple_list!(observer) producing (Obs, ()) as expected.
+//!   - StdMapObserver & MaxMapFeedback: MaxMapFeedback records the observer
+//!     by name (e.g., "response_map") and later resolves it inside the
+//!     executor's observer list. The StdMapObserver instance passed to
+//!     MaxMapFeedback::new MUST be the same instance that is moved into the
+//!     executor — passing a different/detached observer will result in an
+//!     unwrap panic at evaluation time.
+//!   - Multi-core LLMP: multi-worker LLMP support is deferred; when cfg
+//!     requests workers > 1, the runner currently falls back to single-core
+//!     execution and prints an informational notice for reliability.
 //!
 //! Robustness and error handling:
 //!   - OnDiskCorpus creation errors are converted into NexsizError::Config to
@@ -65,7 +65,7 @@
 //!     mutation logic used in the mutational stage.
 //!   - crate::common::config and crate::common::error for configuration and
 //!     error mapping conventions used here.
-    
+
 use crate::common::config::Config;
 use crate::common::error::{NexsizError, Result};
 use crate::execution::libafl_exec::{build_executor_with_observer, make_response_observer};
