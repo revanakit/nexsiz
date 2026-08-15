@@ -1,9 +1,8 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 09/08/2026
-//! Module  : nexsiz::src::common::utils
-//! 
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::common::utils
+//!
 //! Module purpose
 //! - Collection of lightweight utilities used across the codebase: a small deterministic PRNG,
 //!   fast non-cryptographic hashing, time helpers, and byte formatting/manipulation helpers.
