@@ -3,14 +3,68 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::reuse
 //!
-//! The key idea: after a successful execution that leaves the target in a
-//! known "safe" state, subsequent test cases that share a common safe
-//! prefix can be sent on the same TCP connection, avoiding the costly
-//! connect / handshake / authentication overhead.
+//! Purpose:
+//!   Decision engine for connection reuse and protocol-level "desocket"
+//!   reset strategies. This module encapsulates heuristics that allow the
+//!   fuzzer to reuse an existing TCP session for multiple messages when it is
+//!   safe to do so, reducing expensive reconnect/handshake overhead for
+//!   stateful protocols (e.g., FTP, SMTP, HTTP-like services).
 //!
-//! Phase 2: SocketState tracks Clean vs Polluted. When polluted, the
-//! worker prefers a protocol-level desocket reset before falling back
-//! to full TCP reconnect.
+//! Key responsibilities:
+//!   - Track per-connection metrics (messages sent, consecutive failures) and
+//!     maintain a SocketState that distinguishes Clean vs Polluted sessions.
+//!   - Maintain a set of response codes considered "safe to continue" and use
+//!     them together with failure counters to decide whether to reuse a
+//!     connection or force a reset.
+//!   - Expose simple API used by workers:
+//!       * update(&ExecutionResult) — fold execution outcome into policy state
+//!       * should_reuse() -> bool — whether next test may reuse the connection
+//!       * needs_desocket() -> bool — whether a protocol-level reset is preferred
+//!       * force_reset(), on_reconnect(), on_desocket_ok(), on_desocket_fallback()
+//!         — lifecycle control hooks for reconnect/desocket paths.
+//!
+//! Behavioural summary:
+//!   - After each execution, update() increments messages_on_conn, updates the
+//!     SocketState, and inspects the ExecutionResult for crashes, hangs, errors,
+//!     or "safe" response codes. Failures mark the connection polluted and
+//!     increment a failure counter that influences reuse decisions.
+//!   - Reuse is allowed only when the connection is currently considered
+//!     reusable, failures are below the configured threshold, the socket state
+//!     reports reusable, and the per-connection message budget has not been
+//!     exhausted.
+//!   - When the socket becomes polluted, the policy prefers a protocol-level
+//!     desocket reset (Phase 2) when applicable; falling back to a full TCP
+//!     reconnect is supported and resets internal counters accordingly.
+//!
+//! Configuration & defaults:
+//!   - ReusePolicy::new(max_messages, max_failures) builds a policy with a
+//!     configurable message budget and failure tolerance. Default() maps to
+//!     new(32, 3).
+//!   - The implementation seeds an internal safe_codes HashSet with common
+//!     service "OK"/greeting reply codes (e.g., 200, 220, 230, 250, 331...) and
+//!     also populates the full 200..300 success range to be permissive for
+//!     HTTP-like services. Adjust this set for protocol-specific deployments.
+//!
+//! Integration notes & invariants:
+//!   - This policy is orthogonal to the network IO layer; it consumes
+//!     ExecutionResult instances produced by connector code and provides a
+//!     boolean decision to the executor whether to reuse an existing socket.
+//!   - The socket_state field (crate::execution::desocket::SocketState) carries
+//!     additional phase-2 logic and should be consulted when implementing
+//!     desocket vs. reconnect workflows.
+//!   - update() must be invoked after every attempt that used the connection
+//!     so internal counters remain consistent with actual network traffic.
+//!
+//! Performance & safety:
+//!   - No unsafe code; uses standard collections and plain integer counters.
+//!   - Lightweight and intended to run in hot paths — avoid heavy-weight
+//!     operations inside update(). Tune max_messages to balance reuse benefit
+//!     vs. state staleness for your target protocol.
+//!
+//! See also:
+//!   - crate::execution::desocket for SocketState / desocket reset semantics.
+//!   - crate::common::types::ExecutionResult for fields inspected by update().
+
 
 use crate::common::types::ExecutionResult;
 use crate::execution::desocket::{SocketState, SocketStateKind};
