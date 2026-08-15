@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 09/08/2026
-//! Module  : nexsiz::src::nxs::mod
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::nxs::mod
 //!
 //! NXS integration layer — meta JSON writer + non-blocking existence-script spawn
 //!
