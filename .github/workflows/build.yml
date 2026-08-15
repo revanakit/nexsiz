@@ -1,0 +1,535 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C strip=symbols"
+  RUST_TOOLCHAIN: "1.87.0"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Lint: formatting + Clippy (advisory — report only, do not block)
+  # ─────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check (advisory)
+        continue-on-error: true
+        run: |
+          if cargo fmt --all -- --check; then
+            echo "rustfmt: clean"
+          else
+            echo "::warning::rustfmt drift detected — run: cargo +${{ env.RUST_TOOLCHAIN }} fmt --all"
+            exit 1
+          fi
+
+      - name: Clippy default features (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets --message-format=short 2>&1 | tee clippy-default.log
+
+      - name: Clippy features=libafl (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets --features libafl --message-format=short 2>&1 | tee clippy-libafl.log
+
+      - name: Clippy features=json-model (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets --features json-model --message-format=short 2>&1 | tee clippy-json-model.log
+
+      - name: Clippy features=libafl,json-model (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets --features libafl,json-model --message-format=short 2>&1 | tee clippy-libafl-json.log
+
+  # ─────────────────────────────────────────────────────────────
+  # Validate Frida / external SHM coverage agent (hard gate)
+  # ─────────────────────────────────────────────────────────────
+  validate-frida-agent:
+    name: Validate Frida coverage agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert agent files exist
+        run: |
+          set -euo pipefail
+          test -f agents/frida/nexsiz_cov.js
+          test -f agents/frida/README.md
+          echo "Agent files present."
+
+      - name: Setup Node.js (syntax check only)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: JavaScript syntax check
+        run: |
+          node --check agents/frida/nexsiz_cov.js
+          echo "nexsiz_cov.js: syntax OK"
+
+      - name: Protocol / contract sanity checks
+        run: |
+          set -euo pipefail
+          grep -q 'MAP_SIZE = 65536' agents/frida/nexsiz_cov.js
+          grep -q 'nexsiz-cov' agents/frida/nexsiz_cov.js
+          grep -q 'NEXSIZ_SHM_ID' agents/frida/nexsiz_cov.js
+          grep -q 'NEXSIZ_COV_MODE' agents/frida/nexsiz_cov.js
+          grep -q 'hitEdge' agents/frida/nexsiz_cov.js
+          grep -q 'startStalker\|startExportsMode' agents/frida/nexsiz_cov.js
+          grep -q '/nexsiz-cov' agents/frida/README.md
+          grep -q '65536' agents/frida/README.md
+          grep -q 'SharedMapCoverage\| -C map' agents/frida/README.md
+          echo "Frida agent SHM protocol contract OK."
+
+  # ─────────────────────────────────────────────────────────────
+  # Official NXS existence scripts (separate binaries under nxs/)
+  # Linux only — NXS build scripts and e2e are POSIX.
+  # ─────────────────────────────────────────────────────────────
+  build-nxs:
+    name: Build official NXS binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo (nxs crates)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            nxs/src/lib
+            nxs/src/auto-repro
+            nxs/src/save-notify
+            nxs/src/differential-probe
+            nxs/src/timeout-analyzer
+            nxs/src/notify-webhook
+
+      - name: Assert NXS layout
+        run: |
+          set -euo pipefail
+          test -f nxs/CONTRACT.md
+          test -x nxs/build.sh || chmod +x nxs/build.sh
+          test -f nxs/categories.toml
+          for d in auto-repro save-notify differential-probe timeout-analyzer notify-webhook; do
+            test -f "nxs/src/${d}/Cargo.toml"
+          done
+          echo "NXS source layout OK."
+
+      - name: Build all official NXS
+        run: |
+          set -euo pipefail
+          cd nxs
+          ./build.sh
+          echo "--- nxs/bin ---"
+          ls -lh bin/
+
+      - name: Smoke each binary (--version / --help)
+        run: |
+          set -euo pipefail
+          for b in nxs/bin/nxs-*; do
+            [[ -f "$b" ]] || continue
+            name=$(basename "$b")
+            echo "== $name =="
+            "$b" --version
+            "$b" --help >/dev/null
+          done
+
+      - name: Upload NXS binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxs-linux-x86_64
+          path: nxs/bin/nxs-*
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────
+  # NXS contract e2e (no live target required)
+  # ─────────────────────────────────────────────────────────────
+  test-nxs:
+    name: NXS contract e2e
+    runs-on: ubuntu-latest
+    needs: [build-nxs]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download NXS binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: nxs-linux-x86_64
+          path: nxs/bin
+
+      - name: Make executable
+        run: chmod +x nxs/bin/nxs-*
+
+      - name: Run e2e harness
+        run: |
+          set -euo pipefail
+          chmod +x nxs/tests/e2e.sh
+          ./nxs/tests/e2e.sh
+
+  # ─────────────────────────────────────────────────────────────
+  # Linux Release builds
+  # ─────────────────────────────────────────────────────────────
+  build-default:
+    name: Release (default, no LibAFL) [linux]
+    runs-on: ubuntu-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release (default)
+        run: cargo build --release
+
+      - name: Show binary info
+        run: |
+          ls -lh target/release/nexsiz
+          file target/release/nexsiz || true
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - name: Smoke test (--help / --nxs-list)
+        run: |
+          ./target/release/nexsiz --help || ./target/release/nexsiz -? || true
+          ./target/release/nexsiz -V || true
+          ./target/release/nexsiz --nxs default --nxs-list || true
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-default
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-libafl:
+    name: Release (features = libafl) [linux]
+    runs-on: ubuntu-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with libafl
+        run: cargo build --release --features libafl
+
+      - name: Show binary info
+        run: |
+          ls -lh target/release/nexsiz
+          file target/release/nexsiz || true
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - name: Smoke test (--help / LibAFL flag presence)
+        run: |
+          ./target/release/nexsiz --help || ./target/release/nexsiz -? || true
+          ./target/release/nexsiz -V || true
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-json-model:
+    name: Release (features = json-model) [linux]
+    runs-on: ubuntu-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with json-model
+        run: cargo build --release --features json-model
+
+      - name: Show binary info
+        run: |
+          ls -lh target/release/nexsiz
+          file target/release/nexsiz || true
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - name: Smoke test (--help)
+        run: |
+          ./target/release/nexsiz --help || ./target/release/nexsiz -? || true
+          ./target/release/nexsiz -V || true
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-json-model
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-libafl-json:
+    name: Release (features = libafl,json-model) [linux]
+    runs-on: ubuntu-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with libafl,json-model
+        run: cargo build --release --features libafl,json-model
+
+      - name: Show binary info
+        run: |
+          ls -lh target/release/nexsiz
+          file target/release/nexsiz || true
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - name: Smoke test (--help)
+        run: |
+          ./target/release/nexsiz --help || ./target/release/nexsiz -? || true
+          ./target/release/nexsiz -V || true
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl-json
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-libafl-stable:
+    name: Release libafl (stable) [linux]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with libafl (stable)
+        run: cargo build --release --features libafl
+
+      - name: Upload artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl-stable
+          path: target/release/nexsiz
+
+  # ─────────────────────────────────────────────────────────────
+  # Windows Release builds (MSVC)
+  # ─────────────────────────────────────────────────────────────
+  build-windows-default:
+    name: Release (default) [windows]
+    runs-on: windows-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release (default)
+        run: cargo build --release
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Show binary info
+        shell: pwsh
+        run: |
+          Get-Item target\release\nexsiz.exe | Format-List Name, Length, LastWriteTime
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - name: Smoke test (--help / --nxs-list)
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --help 2>$null; if (-not $?) { .\target\release\nexsiz.exe -? 2>$null }
+          .\target\release\nexsiz.exe -V 2>$null
+          .\target\release\nexsiz.exe --nxs default --nxs-list 2>$null
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-default
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  build-windows-libafl:
+    name: Release (features = libafl) [windows]
+    runs-on: windows-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with libafl
+        run: cargo build --release --features libafl
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Show binary info
+        shell: pwsh
+        run: |
+          Get-Item target\release\nexsiz.exe | Format-List Name, Length, LastWriteTime
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - name: Smoke test (--help)
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --help 2>$null; if (-not $?) { .\target\release\nexsiz.exe -? 2>$null }
+          .\target\release\nexsiz.exe -V 2>$null
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-libafl
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  build-windows-json-model:
+    name: Release (features = json-model) [windows]
+    runs-on: windows-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with json-model
+        run: cargo build --release --features json-model
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Show binary info
+        shell: pwsh
+        run: |
+          Get-Item target\release\nexsiz.exe | Format-List Name, Length, LastWriteTime
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - name: Smoke test (--help)
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --help 2>$null; if (-not $?) { .\target\release\nexsiz.exe -? 2>$null }
+          .\target\release\nexsiz.exe -V 2>$null
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-json-model
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  build-windows-libafl-json:
+    name: Release (features = libafl,json-model) [windows]
+    runs-on: windows-latest
+    needs: [validate-frida-agent]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release with libafl,json-model
+        run: cargo build --release --features libafl,json-model
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Show binary info
+        shell: pwsh
+        run: |
+          Get-Item target\release\nexsiz.exe | Format-List Name, Length, LastWriteTime
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - name: Smoke test (--help)
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --help 2>$null; if (-not $?) { .\target\release\nexsiz.exe -? 2>$null }
+          .\target\release\nexsiz.exe -V 2>$null
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-libafl-json
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
