@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 08/08/2026
-//! Module  : nexsiz/src/plugin/encryptor.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::plugin::encryptor
 //!
 //! # Encryptor Plugin Layer
 //!
