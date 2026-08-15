@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/scripting/encryptor_bridge.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::scripting::encryptor_bridge
 //!
 //! Python selects an encryptor by name and optional key material.
 //! Workers resolve via resolve_encryptor_with_key at encrypt time.
