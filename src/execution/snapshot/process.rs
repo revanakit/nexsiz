@@ -1,6 +1,7 @@
-//! Process-restart snapshot provider.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::snapshot::process
 //!
 //! Captures no memory image. On restore we kill the child and respawn
 //! `target_cmd`. Suitable for targets that reach a usable state quickly
