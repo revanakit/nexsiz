@@ -1,6 +1,8 @@
-//! Socket / connection state tracking for desocket decisions.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::desocket::state
+//!
 
 /// Coarse connection readiness from the fuzzer’s point of view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
