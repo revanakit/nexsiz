@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 13/08/2026
-//! Module  : nexsiz::src::input::corpus
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::input::corpus
 //!
 //! Purpose:
 //!   Thread-safe corpus and seed-queue management used by the fuzzer's mutation
