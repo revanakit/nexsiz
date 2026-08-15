@@ -1,7 +1,7 @@
-//! NEXSIZ – Worker threads with rarity-guided energy, encryptor pipeline
-//! grey-box coverage, single repair ownership, MutatorBridge dict merge
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::worker
 //!
 //! Repair ownership (exactly one stage, live-safe):
 //!   1. IntegrityBridge active  → bridge.repairer().prepare_for_send()
