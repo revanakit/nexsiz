@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 09/08/2026
-//! Module  : nexsiz::src::nxs::reaper
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::nxs::reaper
 //!
 //! Asynchronous NXS exit-code reaper.
 //!
