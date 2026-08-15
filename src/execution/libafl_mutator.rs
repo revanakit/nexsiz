@@ -1,6 +1,8 @@
-//! NEXSIZ – Hierarchical Mutator as LibAFL Mutator (0.15.x)
-//! Author  : Revana
-//! Date    : 04/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::libafl_mutator
+//!
 
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::input::model::ProtocolModel;
