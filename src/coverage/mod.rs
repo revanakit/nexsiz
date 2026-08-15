@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 14/08/2026
-//! Files   : nexsiz/src/coverage/mod.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::coverage::mod
 //!
 //! NEXSIZ – Grey-box Coverage / Instrumentation layer
 //!
