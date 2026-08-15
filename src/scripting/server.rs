@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/scripting/server.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::scripting::server
 //!
 //! Unix domain socket RPC server (+ oracle-mode reverse-RPC loop).
 
