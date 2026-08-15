@@ -1,6 +1,8 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
-//! Author  : Revana
-//! Date    : 04/08/2026
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::process_monitor
+//!
 //! Optional local process monitoring for targets launched as child processes.
 //!
 //! Crash detection:
