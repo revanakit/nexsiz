@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 12/08/2026
-//! Module  : nexsiz::src::coverage::software
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::coverage::software 
 //!
 //! Software / Response-Edge Coverage Provider
 //! -----------------------------------------
