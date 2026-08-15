@@ -1,6 +1,8 @@
-//! Null desocket provider — no protocol reset.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::desocket::null
+//!
 
 use super::ProtocolReset;
 use crate::common::error::Result;
