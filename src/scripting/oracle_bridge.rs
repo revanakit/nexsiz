@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 07/08/2026
-//! Files   : nexsiz/src/scripting/oracle_bridge.rs
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::scripting::oracle_bridge
 //!
 //! Python Oracle bridge – reverse-RPC for is_interesting()
 //!
