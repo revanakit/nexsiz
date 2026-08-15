@@ -1,6 +1,7 @@
-//! Built-in protocol-aware desocket / reset sequences.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::desocket::builtin
 //!
 //! Each variant sends a minimal “return to ready” sequence over the live
 //! TCP connection. Success is determined by response codes when available.
