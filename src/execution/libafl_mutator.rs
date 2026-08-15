@@ -3,7 +3,69 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::libafl_mutator
 //!
-
+//! Purpose:
+//!   Provides a LibAFL-compatible hierarchical mutator that adapts raw
+//!   byte-oriented BytesInput into NEXSIZ TestCase structures, performs
+//!   semantic/hierarchical mutations using the internal NexsizMutator, and
+//!   serializes the mutated TestCase back into bytes for execution.
+//!
+//! Responsibilities:
+//!   - Convert raw byte buffers into NEXSIZ TestCase(s) with message/field
+//!     structure (see bytes_to_testcase).
+//!   - Drive NexsizMutator to produce hierarchical, protocol-aware mutations.
+//!   - Provide a Mutator<BytesInput, S> impl compatible with LibAFL's fuzzer
+//!     loop, including a deterministic per-mutation id generator (next_id).
+//!   - Apply simple fallbacks when the hierarchical mutator returns unchanged
+//!     output (random seed byte or single-bit flip) to ensure the input corpus
+//!     is progressed.
+//!
+//! Key types & functions:
+//!   - bytes_to_testcase(id, data): Parse input bytes into a TestCase. If the
+//!     payload contains CRLF-delimited lines, each line is converted to a
+//!     Message with semantic fields where possible:
+//!       * If a space separates a command and arguments, fields `cmd` (Command),
+//!         `sp` (protected single-space separator), optional `arg` (String),
+//!         and optional `crlf` (protected CRLF) are created.
+//!       * Otherwise the whole chunk is stored as a `raw` Binary field.
+//!     If no CRLFs are found, the entire payload becomes a single `raw` field.
+//!
+//!   - NexsizHierarchicalMutator<S>:
+//!       * Wraps `inner: NexsizMutator` (semantic mutator) and exposes it as a
+//!         libafl Mutator for BytesInput.
+//!       * Constructor: from_protocol(seed, protocol) chooses a ProtocolModel
+//!         (ftp/http/smtp/generic) and initializes NexsizMutator with the
+//!         configured hyperparameters (depth/hyperprobs). These parameters
+//!         control mutation depth, mutation probabilities and integrity repair.
+//!       * Mutation flow:
+//!           1. Convert input bytes → parent TestCase (bytes_to_testcase).
+!//            2. Call inner.mutate(parent, next_id+1) to obtain a mutated
+//!               TestCase (child).
+//!            3. Serialize child → new_bytes and replace the BytesInput contents.
+//!            4. If new_bytes == original, apply a deterministic fallback:
+//!               - If empty: replace with a single pseudorandom seed byte.
+//!               - Else: flip a single bit at a pseudorandom index.
+//!
+//! Compatibility & traits:
+//!   - Implements libafl::mutators::Mutator<BytesInput, S> where S: HasRand.
+//!   - Implements libafl_bolts::Named for runtime identification in LibAFL
+//!     mutator pipelines.
+//!   - post_exec() is a no-op; corpus bookkeeping is handled externally.
+//!
+//! Determinism, safety & performance notes:
+//!   - The mutator maintains a wrapping u64 `next_id` used to generate unique
+//!     ids per mutation; these are used as seeds/ids passed to the hierarchical
+//!     mutator to preserve reproducibility where required.
+//!   - Randomness is sourced from the libafl state (HasRand). No unsafe code
+//!     or global mutable state is required here.
+//!   - The implementation clones/serializes buffers when converting between
+//!     BytesInput and TestCase; this is acceptable for typical fuzzing workloads
+//!     but can be optimized later if profiling demands it.
+//!
+//! See also:
+//!   - crate::input::mutator::Mutator (NexsizMutator) for the internal
+//!     hierarchical/semantic mutation logic and integrity repair heuristics.
+//!   - crate::input::model::ProtocolModel for protocol-specific field schemas.
+    
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::input::model::ProtocolModel;
 use crate::input::mutator::Mutator as NexsizMutator;
