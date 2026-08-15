@@ -1,7 +1,8 @@
 /**
- * Nexsiz Frida Coverage Agent (cross-platform)
- * Author  : Revana / Nexsiz Toolsmith
- * Date    : 14/08/2026
+ * NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+ *
+ * AUTHOR     ::     Revana 
+ * MODULE     ::     agents::frida::nexsiz_cov
  *
  * Writes AFL-style edge coverage into a platform shared-memory region that
  * Nexsiz's SharedMapCoverage provider reads each execution.
