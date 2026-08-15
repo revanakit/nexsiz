@@ -70,8 +70,9 @@
 //!
 //! Platform notes
 //! --------------
-//! - Signal handling relies on libc SIGINT/SIGTERM registration (see
-//!   install_signal_handlers). This module expects a POSIX-like environment.
+//! - Signal handling: on Unix, libc SIGINT/SIGTERM registration via
+//!   install_signal_handlers. On non-Unix, campaign stop relies on max_execs,
+//!   max_runtime, and RPC stop path (no pure-stdlib Ctrl-C without extra deps).
 //! - Network re-execution (used by minimizer) supports both TCP and UDP paths.
 //!
 //! Side-effects
@@ -672,25 +673,35 @@ impl Engine {
     }
 }
 
+/// Install cooperative stop on SIGINT/SIGTERM (Unix). No-op on other platforms.
 fn install_signal_handlers(stop: Arc<AtomicBool>) {
-    use std::sync::Once;
-    static INIT: Once = Once::new();
-    static mut STOP_FLAG: Option<Arc<AtomicBool>> = None;
+    #[cfg(unix)]
+    {
+        use std::sync::Once;
+        static INIT: Once = Once::new();
+        static mut STOP_FLAG: Option<Arc<AtomicBool>> = None;
 
-    INIT.call_once(|| {
-        unsafe {
-            STOP_FLAG = Some(stop);
+        INIT.call_once(|| {
+            unsafe {
+                STOP_FLAG = Some(stop);
 
-            extern "C" fn handler(_: libc::c_int) {
-                unsafe {
-                    if let Some(ref flag) = STOP_FLAG {
-                        flag.store(true, Ordering::Relaxed);
+                extern "C" fn handler(_: libc::c_int) {
+                    unsafe {
+                        if let Some(ref flag) = STOP_FLAG {
+                            flag.store(true, Ordering::Relaxed);
+                        }
                     }
                 }
-            }
 
-            libc::signal(libc::SIGINT, handler as usize);
-            libc::signal(libc::SIGTERM, handler as usize);
-        }
-    });
+                libc::signal(libc::SIGINT, handler as usize);
+                libc::signal(libc::SIGTERM, handler as usize);
+            }
+        });
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows / non-Unix: no pure-stdlib signal registration without winapi.
+        // Campaign still terminates on max_execs, max_runtime, or RPC stop.
+        let _ = stop;
+    }
 }
