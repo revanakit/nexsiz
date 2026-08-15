@@ -1,6 +1,7 @@
-//! NEXSIZ – LibAFL campaign runner (single-core, 0.15.x)
-//! Author  : Revana
-//! Date    : 13/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::libafl_runner
 //!
 //! Multi-core LLMP is temporarily deferred until the single-core path is solid.
 //! When workers > 1 we still run single-core (with a notice) for reliability.
