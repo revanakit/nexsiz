@@ -1,8 +1,7 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
 //!
-//! Author  : Revana
-//! Date    : 13/08/2026
-//! Module  : nexsiz::src::input::model
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::input::model
 //!
 //! This module provides an in-memory, minimal but expressive representation of
 //! network protocol structure used by the fuzzer core. It contains:
