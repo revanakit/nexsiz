@@ -1,7 +1,8 @@
 //! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
-//! Author  : Revana
-//! Date    : 05/08/2026
-//! Low-level network connector with multi-layer timeout and clear outcome classification.
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::connector
+//!
 
 use crate::common::error::{NexsizError, Result};
 use crate::common::types::{ExecutionResult, OutcomeClass, TestCase};
