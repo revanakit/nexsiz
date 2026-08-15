@@ -1,6 +1,7 @@
-//! NEXSIZ – LibAFL Executor (0.15.x)
-//! Author  : Revana
-//! Date    : 13/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::libafl_exec
 //!
 //! CRITICAL (LibAFL 0.15):
 //!   - ObserversTuple is implemented for `()` and `(Head, Tail)` where Tail is
