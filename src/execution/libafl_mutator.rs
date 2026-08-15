@@ -38,12 +38,12 @@
 //!         control mutation depth, mutation probabilities and integrity repair.
 //!       * Mutation flow:
 //!           1. Convert input bytes → parent TestCase (bytes_to_testcase).
-!//            2. Call inner.mutate(parent, next_id+1) to obtain a mutated
-//!               TestCase (child).
-//!            3. Serialize child → new_bytes and replace the BytesInput contents.
-//!            4. If new_bytes == original, apply a deterministic fallback:
-//!               - If empty: replace with a single pseudorandom seed byte.
-//!               - Else: flip a single bit at a pseudorandom index.
+//!           2. Call inner.mutate(parent, next_id+1) to obtain a mutated
+//!              TestCase (child).
+//!           3. Serialize child → new_bytes and replace the BytesInput contents.
+//!           4. If new_bytes == original, apply a deterministic fallback:
+//!              - If empty: replace with a single pseudorandom seed byte.
+//!              - Else: flip a single bit at a pseudorandom index.
 //!
 //! Compatibility & traits:
 //!   - Implements libafl::mutators::Mutator<BytesInput, S> where S: HasRand.
@@ -65,7 +65,7 @@
 //!   - crate::input::mutator::Mutator (NexsizMutator) for the internal
 //!     hierarchical/semantic mutation logic and integrity repair heuristics.
 //!   - crate::input::model::ProtocolModel for protocol-specific field schemas.
-    
+
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::input::model::ProtocolModel;
 use crate::input::mutator::Mutator as NexsizMutator;
