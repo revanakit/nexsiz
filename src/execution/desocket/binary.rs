@@ -1,6 +1,7 @@
-//! Heuristic desocket provider for length-prefixed binary protocols.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::desocket::binary
 //!
 //! Fallback when no operator DesocketSpec is present.  Ordered probes:
 //!   1. Zero-length frame
