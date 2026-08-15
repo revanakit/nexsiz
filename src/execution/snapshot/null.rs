@@ -1,6 +1,8 @@
-//! Null snapshot provider — zero cost, no process management.
-//! Author  : Revana
-//! Date    : 08/08/2026
+//! NEXSIZ – NEXT-GENERATION STATEFUL NETWORK PROTOCOL FUZZER
+//!
+//! AUTHOR     ::     Revana 
+//! MODULE     ::     src::execution::snapshot::null
+//!
 
 use super::SnapshotProvider;
 use crate::common::error::Result;
