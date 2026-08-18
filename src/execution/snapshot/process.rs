@@ -3,10 +3,53 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::snapshot::process
 //!
-//! Captures no memory image. On restore we kill the child and respawn
-//! `target_cmd`. Suitable for targets that reach a usable state quickly
-//! after start (e.g. many network daemons). Phase 2 will add desocketing
-//! so protocol state can be restored without full TCP teardown.
+//!
+//! Purpose:
+//! A simple SnapshotProvider that implements snapshot semantics by killing and
+//! respawning the target process instead of capturing an in-memory image. This
+//! backend is appropriate for targets that reach a usable state quickly after
+//! start (for example, many network daemons) and when full process checkpointing
+//! is not available or desired.
+//!
+//! High-level behavior:
+//! - prepare(): ensure any previous child is terminated, spawn a fresh process,
+//!   and mark the provider ready.
+//! - take_snapshot(): no memory image is produced; the provider records a
+//!   logical "clean point" after a successful prepare/restore so callers may
+//!   treat subsequent restores as a revert to that clean start state.
+//! - restore(): perform a kill + respawn cycle to return the target to the
+//!   known-good start state.
+//! - is_alive()/crashed(): best-effort checks using the locally-held Child
+//!   handle; when no Child is held these return false (no process managed).
+//!
+//! Responsibilities & invariants:
+//! - Manage the target process lifecycle using a Mutex-protected Option<Child>
+//!   so the provider can be safely queried from multiple contexts.
+//! - Use short, conservative sleeps after spawn to give processes time to bind
+//!   sockets and become ready; these reduce race conditions but are intentionally
+//!   small to keep test throughput high.
+//! - Map spawn failures and invalid configuration (empty command) to NexsizError
+//!   variants so callers can surface configuration/execution problems.
+//!
+//! Design notes & rationale:
+//! - This provider favors determinism and simplicity: kills and respawns are
+//!   reliable across environments compared to environment-sensitive checkpoint
+//!   tooling, at the cost of requiring full process restart between restores.
+//! - Counters and complex image lifecycle are omitted by design — this is a
+//!   pragmatic fallback for environments where CRIU or other snapshotting is
+//!   unavailable or unnecessary for the target workload.
+//! - The implementation uses saturating/robust state transitions: terminate()
+//!   always clears the Child and resets ready/has_snapshot flags to avoid stale
+//!   state across runs.
+//!
+//! Testing & extension:
+//! - Unit tests should validate constructor validation (empty command), prepare/
+//!   restore flow, and is_alive/crashed semantics using short-lived commands.
+//! - To provide richer snapshot semantics, implement a SnapshotProvider that
+//!   creates and restores persistent images (see criu.rs for an example).
+//!
+//! See also: SnapshotProvider trait and other snapshot backends in this module
+//! (criu.rs, null.rs) for alternative snapshot strategies and trade-offs.
 
 use super::SnapshotProvider;
 use crate::common::error::{NexsizError, Result};
