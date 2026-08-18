@@ -3,8 +3,54 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::plugin::registry
 //!
-//! NEXSIZ – Plugin registry
-//! 
+//! Purpose
+//! -------
+//! Central registry and resolver for nexSIZ plugin components. This module
+//! provides a small, ergonomic facade to construct a consistent set of runtime
+//! plugins used by the fuzzing pipeline: protocol model providers, integrity
+//! repair heuristics, interestingness oracles, and encryptors.
+//!
+//! Key responsibilities
+//! --------------------
+//! - Resolve plugin implementations by human-friendly names or file paths.
+//! - Provide convenience constructors that wire together protocol-specific
+//!   defaults (e.g., auto-selecting an integrity repair strategy for FTP).
+//! - Offer a single PluginRegistry struct that bundles selected plugins for
+//!   use by executor and mutator subsystems.
+//! - Expose helpers to obtain the active ProtocolModel and a compact textual
+//!   summary for logging and telemetry.
+//!
+//! Design & behavior notes
+//! -----------------------
+//! - Resolution is intentionally forgiving: unknown names fall back to safe
+//!   defaults (generic protocol, default integrity, null encryptor) and
+//!   non-fatal warnings are emitted when external models fail to load.
+//! - The registry does not own long-running state; plugin instances are boxed
+//!   trait objects appropriate for sharing across worker threads.
+//! - Integrity resolution can be influenced by the chosen protocol — a
+//!   convenient auto-selection helps operators avoid mismatched integrity
+//!   strategies for well-known protocols.
+//!
+//! Threading & safety
+//! ------------------
+//! - PluginRegistry contains boxed trait objects (Send + Sync implementations
+//!   are required by the plugin traits) and is safe to construct on the main
+//!   thread and share immutable references with worker threads.
+//!
+//! Operational notes
+//! -----------------
+//! - Use PluginRegistry::from_names or from_names_with_key to create a set of
+//!   plugins from CLI-style names; resolve_pipeline and resolve_protocol are
+//!   used under the hood to map names to concrete implementations.
+//! - Call protocol_model() to obtain a fresh ProtocolModel instance suitable
+//!   for feeding into mutator and testcase generation logic.
+//! - summary() returns a compact single-line descriptor useful for start-up
+//!   logs and reproducibility metadata.
+//!
+//! Testing
+//! -------
+//! - The module contains unit tests validating default fallbacks, protocol-led
+//!   integrity selection, explicit overrides, and encryptor name resolution.
 
 use crate::plugin::encryptor::{resolve_encryptor_with_key, Encryptor};
 use crate::plugin::integrity::{resolve_integrity_for_protocol, IntegrityRepair};
