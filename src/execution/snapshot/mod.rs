@@ -3,16 +3,53 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::snapshot::mod
 //!
-//! Snapshot / Desocketing track (complete):
-//!   Phase 1 – SnapshotProvider trait, Null / ProcessRestart / CRIU backends
-//!   Phase 2 – ProtocolReset desocket + SocketState (see execution/desocket/)
-//!   Phase 3 – restore_epoch orchestration, cost-aware energy, stats
+//! Purpose:
+//!   Provide the SnapshotProvider trait and runtime resolver for concrete snapshot
+//!   backends. This module centralises snapshot lifecycle management, backend
+//!   selection, and the small convenience helper used by the Engine to attempt
+//!   a restore after a crash is observed.
 //!
-//! Design goals:
-//!   - Pure-stdlib default path
-//!   - Zero behaviour change when snapshot is disabled
-//!   - Single ownership of process lifecycle when enabled
-//!   - Workers observe restore_epoch and force-reconnect after restore
+//! Key responsibilities:
+//!   - Define the SnapshotProvider capability contract (thread-safe: Send + Sync).
+//!   - Implement resolution logic that maps configuration (enabled flag,
+//!     backend name, optional target command, output directory) to a concrete
+//!     provider instance (Null, ProcessRestart, optional CRIU when enabled).
+//!   - Provide clear fallback behaviour and warning messages when a requested
+//!     backend is unavailable or fails to initialize.
+//!   - Expose a minimal helper (maybe_restore) consumed by the Engine to trigger
+//!     restores when appropriate.
+//!
+//! SnapshotProvider lifecycle (expected by the Engine):
+//!   1. prepare()       — arrange the target process and reach a known-good state
+//!   2. take_snapshot() — capture the restore point (no-op for some backends)
+//!   3. ...fuzzing...   — normal iterative fuzzing work occurs here
+//!   4. restore()       — re-instate the last snapshot on crash/hang, then bump epoch
+//!   5. terminate()    — force teardown at campaign end
+//!
+//! Behavioural & configuration notes:
+//!   - When `enabled == false` or backend == "null", a NullSnapshot is used and
+//!     operations become no-ops; this preserves behaviour when snapshotting is
+//!     explicitly disabled.
+//!   - The "process" backend performs process-level restart snapshots and
+//!     requires a target_cmd; failures to initialize a provider fall back to
+//!     NullSnapshot with a stderr warning to aid runtime diagnostics.
+//!   - The "criu" backend is compiled only when the `criu` cargo feature is
+//!     enabled; when requested but not available the code falls back to the
+//!     process restart implementation and emits an informative warning.
+//!   - Providers should implement best-effort liveness and crash detection via
+//!     is_alive() and crashed() respectively; these signals are advisory and
+//!     may be backend-dependent.
+//!
+//! Thread-safety & ownership:
+//!   - SnapshotProvider implementors are Send + Sync to allow safe sharing from
+//!     Engine-managed worker threads while keeping process lifecycle ownership
+//!     centralised in the Engine.
+//!
+//! Testing and maintenance:
+//!   - Unit tests in this module validate basic resolution and the NullSnapshot
+//!     behaviour. Implementations should expose deterministic and testable
+//!     behaviour for prepare/take_snapshot/restore to make integration tests
+//!     reliable.
 
 mod null;
 mod process;
