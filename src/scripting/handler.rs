@@ -3,7 +3,76 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::handler
 //!
-//! RPC command handler – campaign control + all plugin bridges + structured seeds.
+//! Description
+//! -----------
+//! Central RPC command dispatcher for the NEXSIZ campaign-control surface.
+//! Receives line-delimited JSON requests over the Unix-domain socket, routes
+//! them to the appropriate subsystem (corpus, statistics, plugin bridges,
+//! structured seed ingestion), and returns structured JSON responses.
+//! Also owns the special transition into reverse-RPC oracle mode.
+//!
+//! Core responsibilities
+//! ---------------------
+//! - Parse incoming JSON-RPC style messages (method + optional id + params).
+//! - Dispatch to campaign-control verbs:
+//!     * lifecycle     : ping, version, list_methods, stats, stop, get_config
+//!     * corpus        : load_seeds, add_seed_raw, add_seed_structured, export_corpus
+//!     * oracle        : set_oracle, register_oracle (mode switch), unregister,
+//!                       oracle_status
+//!     * protocol      : register_protocol, unregister, protocol_status, get_protocol
+//!     * integrity     : register_integrity, unregister, integrity_status
+//!     * encryptor     : register_encryptor, unregister, encryptor_status
+//!     * mutator       : register_mutator, unregister, mutator_status
+//! - Maintain live name tracking (oracle_name / model_name / …) so get_config
+//!   and stats reflect the currently active Python or native plugin.
+//! - Convert structured seed JSON into TestCase objects and inject them into
+//!   the shared corpus under uniqueness checks.
+//!
+//! Concurrency & ownership
+//! -----------------------
+//! - RpcContext is shared across client-handler threads via Arc.
+//! - Shared state (corpus, stats, stop flag, tracker, coverage, bridges) is
+//!   held behind Arc / Mutex / Atomic as appropriate.
+//! - Bridge registration methods are designed to be callable concurrently;
+//!   individual bridges use their own internal locking (AtomicBool + RwLock).
+//! - The stop AtomicBool is the single cooperative shutdown signal used by
+//!   both the Engine and the RPC layer.
+//!
+//! Bridge integration model
+//! ------------------------
+//! - All live plugin injection goes through the five bridges
+//!   (OracleBridge, ProtocolBridge, IntegrityBridge, EncryptorBridge,
+//!   MutatorBridge). Native set_* commands only record the desired name;
+//!   they do not affect already-running workers.
+//! - register_oracle is special: it returns HandleOutcome::EnterOracleMode
+//!   so the server can switch the connection into the reverse-RPC loop
+//!   (see server.rs).
+//! - Protocol model registration is push-only; the model is snapshotted by
+//!   workers at spawn time (documented limitation of the current design).
+//!
+//! Error handling & protocol surface
+//! ---------------------------------
+//! - Parse failures, missing fields, and unknown methods produce a uniform
+//!   error envelope: { "ok": false, "error": "…", "id": … }.
+//! - Successful responses follow { "ok": true, "result": …, "id": … }.
+//! - Validation helpers (validate_strategy, validate_encryptor_name,
+//!   model_from_params, dictionary_from_params) keep the handler free of
+//!   deep protocol knowledge.
+//!
+//! Design notes
+//! ------------
+//! - Pure-stdlib JSON (no serde) to keep the binary lean and dependency-free.
+//! - Base64 helpers are local; they are intentionally simple and side-effect
+//!   free so they can be used from both the handler and the bridges.
+//! - The handler never blocks on worker progress; all operations are either
+//!   instantaneous state updates or short corpus mutations.
+//!
+//! See Also
+//! --------
+//! - server.rs          : Unix socket accept loop + oracle-mode reverse-RPC
+//! - oracle_bridge.rs   : reverse-RPC is_interesting path
+//! - protocol_bridge.rs : push ProtocolModel store
+//! - seed_parse.rs      : structured seed → TestCase conversion
 
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::coverage::CoverageProvider;
