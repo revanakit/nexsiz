@@ -3,15 +3,78 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::snapshot::criu
 //!
-//! Shells out to the `criu` binary for dump / restore.
-//! Requires:
-//!   - criu installed and on PATH
-//!   - sufficient privileges (often root or CAP_SYS_ADMIN + CAP_SYS_PTRACE)
-//!   - target launched by us (we need the pid)
+//! Summary:
+//! This module provides a SnapshotProvider implementation that invokes the
+//! external `criu` binary to perform process CRIU dump/restore operations for
+//! target processes spawned by the fuzzer. It manages the target process
+//! lifecycle (spawn, kill), stores CRIU image files under the configured
+//! output directory, and converts criu outcomes into the SnapshotProvider
+//! contract used by the rest of the system.
 //!
-//! Image directory lives under <output_dir>/snapshot/criu/.
-//! On restore we kill the old process tree if still present, then
-//! `criu restore` from the last successful dump.
+//! High-level behavior:
+//! - prepare(): ensure a fresh working directory, (re)spawn the target process
+//!   and mark the provider ready to take a dump.
+//! - take_snapshot(): run `criu dump -D <image_dir> ... --leave-running` against
+//!   the currently owned pid, leaving the process running and persisting an
+//!   image set for later restore.
+//! - restore(): if an image exists, kill any locally-owned process, then call
+//!   `criu restore -D <image_dir> ... -d` to recreate the process tree as a
+//!   daemon; when no image exists, prepare() is used as a fallback spawn.
+//! - is_alive()/crashed(): best-effort liveness / crash detection using the
+//!   locally-held Child handle when available; after a restore the provider may
+//!   no longer retain a Child and therefore relies on image & ready flags.
+//!
+//! Requirements & operational notes:
+//! - The `criu` binary must be installed and available on PATH. The constructor
+//!   performs an availability check (`criu --version`) and returns a config
+//!   error if not present.
+//! - Restoring with CRIU typically requires elevated privileges (root or a set
+//!   of Linux capabilities such as CAP_SYS_ADMIN and CAP_SYS_PTRACE) and kernel
+//!   features that match the checkpointed process environment. The caller
+//!   should ensure the running environment supports criu usage.
+//! - CRIU behavior is platform- and kernel-version-sensitive; images are not
+//!   necessarily portable across hosts or kernel upgrades — expect restore
+//!   failures in such cases and treat them as Execution errors.
+//!
+//! Image lifecycle & persistence:
+//! - Image files are stored under <output_dir>/snapshot/criu/ by default.
+//! - prepare() clears any previous images and spawns a fresh target.
+//! - take_snapshot() clears the image directory before creating a new dump.
+//! - terminate() intentionally leaves images on disk to allow post-mortem
+//!   inspection unless explicit cleanup is requested by higher-level code.
+//!
+//! Concurrency & process management:
+//! - The implementation tracks the spawned process via a Mutex-protected
+//!   Option<Child> to allow safe access from multiple callers (is_alive/crashed).
+//!  - After a successful CRIU restore the module does not retain a Child handle
+//!   (criu becomes the process parent); therefore pid is unknown and liveness
+//!   checks fall back to the has_snapshot/ready indicators.
+//!
+//! Error handling & semantics:
+//! - I/O and criu failures are mapped to the crate's NexsizError variants and
+//!   returned to callers; non-zero criu exit codes are treated as Execution
+//!   errors and surface the exit code in the message.
+//! - Small sleeps are used to allow spawned/restored processes to settle; these
+//!   are conservative and intended to avoid races with bind/listen operations.
+//!
+//! Design rationale and safety:
+//! - This provider intentionally performs best-effort cleanup and conservative
+//!   restore behavior: on irrecoverable errors the code falls back to respawn
+//!   (prepare) rather than attempting risky in-place fixes.
+//! - The implementation minimizes stdout noise by redirecting criu stdout to
+//!   /dev/null while preserving stderr for diagnostic messages; consider logging
+//!   or piping stderr for debugging in development runs.
+//!
+//! Testing & extension:
+//! - Unit tests should validate constructor failures (missing criu), correct
+//!   image dir handling, and the provider's SnapshotProvider contract.
+//! - Integration tests that exercise real dumps/restores must be run on a host
+//!   with CRIU installed and appropriate privileges; these tests are environment
+//!   sensitive and may be skipped in CI unless the runner supports criu.
+//!
+//! See also: SnapshotProvider trait (prepare/take_snapshot/restore/is_alive/...)
+//! and the execution connector and process spawning helpers used elsewhere in
+//! the project.
 
 use super::SnapshotProvider;
 use crate::common::error::{NexsizError, Result};
