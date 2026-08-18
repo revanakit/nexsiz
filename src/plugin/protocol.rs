@@ -3,8 +3,70 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::plugin::protocol
 //!
-//! NEXSIZ – Protocol plugins (built-in + grammar-based + JSON models)
-//! Phase 4: JSON `desocket` block → ProtocolModel.desocket (SpecDesocket)
+//! Purpose
+//! -------
+//! Protocol plugin abstractions, lightweight grammar-based protocol builders,
+//! and JSON-backed protocol model loading for nexSIZ. This module provides
+//! primitives to represent protocol dictionaries, message/field specifications,
+//! and "desocket" (session termination) hints used by the mutator and test
+//! execution layers to produce semantically aware testcases.
+//!
+//! Key responsibilities
+//! --------------------
+//! - Define the ProtocolPlugin trait used by mutator and integrity subsystems.
+//! - Supply a set of builtin protocol models (HTTP, FTP, SMTP, DNS, MQTT, SMB,
+//!   length-prefixed binary variants) implemented as grammar producers.
+//! - Provide a small, efficient GrammarProtocol builder for lightweight
+//!   generation of token dictionaries and message skeletons.
+//! - Support external, operator-provided JSON models (when compiled with the
+//!   `json-model` feature) and map JSON fields/messages into ProtocolModel.
+//!
+//! Design & behavior notes
+//! ----------------------
+//! - GrammarProtocol: produces a dictionary of tokens and optional per-message
+//!   hints (delimiter, length-prefixing, endian, length width) to simplify
+//!   generation and parsing in the mutator. Tokens and suffixes are deduplicated
+//!   to reduce dictionary size.
+//! - Builtin grammars include safe, useful examples and fuzzing-oriented tokens
+//!   (e.g., edge-case path entries, long names, NULL/0xFF tokens, and format
+//!   specifiers used for injection tests).
+//! - JSON model loader (opt-in): when the `json-model` Cargo feature is enabled,
+//!   external models can provide dictionary entries, explicit messages, field
+//!   metadata (type, size, protected flag, values, endian), checksums, and a
+//!   desocket spec. Without the feature, loading JSON models returns a helpful
+//!   error message directing the operator to rebuild with the feature enabled.
+//!
+//! Threading & safety
+//! ------------------
+//! - Protocol models are plain data (ProtocolModel) and are cloneable. No
+//!   internal synchronization is required for read-only usage by fuzzer
+//!   workers; share models by reference or clone when necessary.
+//!
+//! Operational notes
+//! -----------------
+//! - Use resolve_protocol(name) to obtain a ProtocolPlugin by builtin name,
+//!   grammar alias (grammar-http, g-http, etc.), or path to a JSON model file.
+//! - JSON tokens support literal "\xNN" escapes and mixed literal content; the
+//!   parser attempts sensible fallbacks on malformed escapes.
+//! - Desocket (sequence-based session termination) hints allow testcase
+//!   execution to detect end-of-session behaviors (goodbye tokens, expected
+//!   success-on-response flags) to support stateful protocols.
+//!
+//! Testing & validation
+//! --------------------
+//! - In-module unit tests validate builtin name resolution, grammar dictionary
+//!   contents, desocket absence/presence, and JSON model parsing (when enabled).
+//!
+//! Notes & caveats
+//! ---------------
+//! - This module focuses on model representation and light-weight grammar
+//!   construction. It does not implement a full parser/serializer for every
+//!   protocol; ProtocolModel is intended to feed higher-level mutator and
+//!   executor components which handle concrete wire formatting, checksums, and
+//!   I/O semantics.
+//! - When consuming external JSON models in production, validate and review
+//!   supplied dictionaries and desocket sequences to avoid accidental
+//!   destructive testcases against stateful services.
 
 use crate::input::model::{
     DesocketSpec, FieldSpec, MessageSpec, ModelChecksum, ModelEndian, ProtocolModel,
