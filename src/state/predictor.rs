@@ -3,7 +3,61 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::state::predictor
 //!
-//! Adaptive state transition predictor.
+//! Purpose
+//! -------
+//! Lightweight, production-ready adaptive predictor for protocol state
+//! transitions observed during fuzzing. The predictor records observed (from ->
+//! to) state transitions and provides simple frequency-based queries useful
+//! for prioritization, rarity scoring, and transition-interest heuristics.
+//!
+//! Key responsibilities
+//! --------------------
+//! - Record directed state transitions and maintain per-source frequency maps.
+//! - Provide best-effort prediction of the next state for a given source state
+//!   by selecting the most frequently observed successor.
+//! - Offer a simple rarity metric in [0.0, 1.0] to quantify how commonly a
+//!   particular transition has been observed relative to total observations.
+//! - Expose a compact "interesting" predicate for low-frequency (rare) transitions.
+//!
+//! Design & behavior notes
+//! ----------------------
+//! - The predictor uses in-memory HashMaps keyed by 64-bit state identifiers
+//!   (u64) and stores counts as u64. This is intended to be fast and memory
+//!   efficient for typical fuzzing workloads.
+//! - Predictions are frequency-based (maximum count). No probabilistic or
+//!   Markov-chain smoothing is applied — this keeps semantics simple and
+//!   deterministic for prioritization logic.
+//! - Rarity is computed as count / total_observations; this gives a global
+//!   notion of uncommon transitions but does not normalize per-source state.
+//!
+//! Threading & safety
+//! ------------------
+//! - Internal mutable state is protected by a Mutex. StatePredictor is safe to
+//!   share across worker threads for concurrent observe()/predict() calls.
+//! - Locking is coarse-grained (single Mutex) which is acceptable given the
+//!   small critical sections; tune or replace with sharded maps if contention
+//!   becomes measurable in high-concurrency scenarios.
+//!
+//! Usage
+//! -----
+//! - Call observe(from, to) to record an observed transition.
+//! - Call predict(from) to get the most-likely successor state (Option<u64>).
+//! - Use rarity(from, to) or is_interesting_transition(from, to) to guide
+//!   prioritization and exploration strategies.
+//!
+//! Testing & validation
+//! --------------------
+//! - Unit tests validate basic counting semantics, prediction, rarity ordering,
+//!   and the interesting-transition threshold behavior.
+//!
+//! Notes & caveats
+//! ---------------
+//! - This component is intentionally simple and heuristic-driven. For richer
+//!   predictive behavior consider weighting by recency, per-source normalization,
+//!   or probabilistic models outside this module.
+//! - The predictor does not persist state; it is an in-memory aide for per-run
+//!   decision-making. Persist/restore logic can be added at a higher layer if
+//!   long-term learning is desired.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
