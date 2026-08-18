@@ -3,20 +3,82 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::plugin::oracle
 //!
-//! NEXSIZ – Expanded Differential & Sanitizer Oracle plugins (production-ready)
-//! 
-//! Production-grade interestingness oracles for red-team / APT fuzzing campaigns.
+//! Purpose
+//! -------
+//! Production-grade set of "interestingness" oracles used by the nexSIZ
+//! fuzzing engine to determine whether an individual execution result merits
+//! retention, triage, or further analysis. This module contains multiple
+//! independent heuristics grouped into families: differential (behavioural
+//! baselines), sanitizer/pattern detection, length & content anomalies, and
+//! protocol-level violation checks. These heuristics are designed to be
+//! composition-friendly so operators can assemble suites for different
+//! campaign phases (fast triage, deep drift detection, sanitizer-focused).
 //!
-//! ## Differential family
-//! Multi-dimensional response fingerprinting against per-bucket baselines.
-//! Detects behavioural divergence without requiring a second live target.
+//! Key responsibilities
+//! --------------------
+//! - Provide a clean Oracle trait implementation for each detector.
+//! - Offer composite oracles (default, strict, differential, sanitizer,
+//!   diffsan, expanded) selectable at runtime via resolve_oracle.
+//! - Maintain light-weight baselines for differential detection with limited
+//!   memory usage, optional timing-anomaly detection, and controlled refresh
+//!   behavior to reduce false positives on drifting services.
+//! - Detect sanitizer and crash signatures in captured stderr/response bodies,
+//!   length-based anomalies, null-byte-in-text heuristics, and simple
+//!   protocol-violation patterns.
 //!
-//! ## Sanitizer family
-//! Pattern-based detection of memory-safety and protocol anomalies that surface
-//! in responses, error strings, or process-monitor output (ASan / UBSan / MSan
-//! signatures, length anomalies, null-byte injection, protocol violations).
+//! Design & behaviour notes
+//! ------------------------
+//! - DifferentialOracle: coarse-keying (response code shape + folded hash)
+//!   groups semantically similar interactions. A per-key baseline stores
+//!   [response codes, body fingerprint, total length, median elapsed, coverage
+//!   fingerprint, hits]. Observations establish baselines on first sight and
+//!   are compared across up to five orthogonal dimensions; configurable
+//!   min_divergence, timing_factor, refresh_after_hits, and max_baselines
+//!   provide operational control.
+//! - SanitizerPatternOracle: pattern-matching against common ASan/UBSan/MSan
+//!   markers and classic crash messages; scans both `result.error` (monitor
+//!   stderr) and response bodies. Extra operator-supplied patterns are
+//!   supported (case-insensitive).
+//! - LengthAnomalyOracle: sliding-window median approximation to identify
+//!   bodies that are unexpectedly large or small; includes an absolute hard
+//!   ceiling for defensive filtering.
+//! - NullByteOracle: flags embedded NULs in responses that are predominantly
+//!   ASCII (useful to find buffer-overread/string-termination bugs).
+//! - ProtocolViolationOracle: simple structural heuristics (e.g. mixed 2xx/5xx
+//!   in one exchange, 1xx then immediate connection reset) complementing
+//!   differential signals.
 //!
-//! All implementations are pure Rust, thread-safe, zero extra dependencies.
+//! Threading & safety
+//! ------------------
+//! - All oracles are implemented in pure Rust and intended to be thread-safe.
+//! - Mutable state (baselines, sliding windows) is protected by Mutex to allow
+//!   concurrent fuzzing workers. Care is taken to keep per-call work small to
+//!   reduce lock contention.
+//!
+//! Performance considerations
+//! --------------------------
+//! - Body fingerprinting hashes only the first N bytes (128) per response to
+//!   avoid hashing multi-megabyte payloads on every execution.
+//! - Differential baseline map uses simple LRU-ish eviction by hit-count to
+//!   bound memory usage; tune `max_baselines` for long-running campaigns.
+//!
+//! Usage (high level)
+//! ------------------
+//! - select or combine oracles via resolve_oracle(name) for CLI flags like
+//!   "default", "strict", "differential", "sanitizer", "diffsan", "expanded".
+//! - For deep campaigns prefer `diffsan` or `expanded`. For quick, noisy
+//!   passes use `strict` or `default`.
+//!
+//! Testing
+//! -------
+//! - Unit tests in-module exercise baseline establishment, sanitizer pattern
+//!   detection, length/null heuristics, and composite behaviour.
+//!
+//! Notes
+//! -----
+//! - This file focuses on detection/flagging logic only; actual crash
+//!   collection, minimization, or input corpus management is handled by other
+//!   components in the fuzzing pipeline.
 
 use crate::common::types::{ExecutionResult, OutcomeClass};
 use crate::common::utils::{hash_bytes, hash_combine};
