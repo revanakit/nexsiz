@@ -1,0 +1,389 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # v0.1.0, v1.2.3-rc1, etc.
+
+permissions:
+  contents: write   # required to create releases and upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C strip=symbols"
+  RUST_TOOLCHAIN: "1.87.0"
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # Linux builds
+  # ────────────────────────────────────────────────────────────
+  build-linux-default:
+    name: Linux · default
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (default)
+        run: cargo build --release
+
+      - name: Smoke test
+        run: |
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+          ./target/release/nexsiz --help || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-default
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-linux-json-model:
+    name: Linux · json-model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (json-model)
+        run: cargo build --release --features json-model
+
+      - name: Smoke test
+        run: |
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-json-model
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-linux-libafl:
+    name: Linux · libafl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (libafl)
+        run: cargo build --release --features libafl
+
+      - name: Smoke test
+        run: |
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-linux-libafl-json:
+    name: Linux · libafl + json-model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (libafl,json-model)
+        run: cargo build --release --features libafl,json-model
+
+      - name: Smoke test
+        run: |
+          ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-linux-x86_64-libafl-json
+          path: target/release/nexsiz
+          if-no-files-found: error
+
+  build-linux-libafl-stable:
+    name: Linux · libafl (stable)
+    runs-on: ubuntu-latest
+    continue-on-error: true   # advisory — do not block release if stable fails
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (libafl, stable)
+        run: cargo build --release --features libafl
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: nexsiz-linux-x86_64-libafl-stable
+          path: target/release/nexsiz
+
+  # ────────────────────────────────────────────────────────────
+  # Windows builds
+  # ────────────────────────────────────────────────────────────
+  build-windows-default:
+    name: Windows · default
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (default)
+        run: cargo build --release
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-default
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  build-windows-json-model:
+    name: Windows · json-model
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (json-model)
+        run: cargo build --release --features json-model
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-json-model
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  build-windows-libafl:
+    name: Windows · libafl
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (libafl)
+        run: cargo build --release --features libafl
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-libafl
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  build-windows-libafl-json:
+    name: Windows · libafl + json-model
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (MSVC)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (libafl,json-model)
+        run: cargo build --release --features libafl,json-model
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexsiz-windows-x86_64-libafl-json
+          path: target/release/nexsiz.exe
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────
+  # Create GitHub Release + attach assets + SHA256SUMS
+  # ────────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux-default
+      - build-linux-json-model
+      - build-linux-libafl
+      - build-linux-libafl-json
+      - build-linux-libafl-stable
+      - build-windows-default
+      - build-windows-json-model
+      - build-windows-libafl
+      - build-windows-libafl-json
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        id: prepare
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"          # e.g. v0.1.0
+          OUT=dist
+          mkdir -p "$OUT"
+
+          # Helper: rename + move if the artifact exists
+          move_if_exists() {
+            local src="$1"
+            local dest="$2"
+            if [[ -f "$src" ]]; then
+              cp "$src" "$OUT/$dest"
+              echo "  + $dest"
+            else
+              echo "  (skip) $dest — artifact missing"
+            fi
+          }
+
+          echo "Preparing assets for ${VERSION}..."
+
+          # Linux
+          move_if_exists artifacts/nexsiz-linux-x86_64-default/nexsiz \
+                         "nexsiz-${VERSION}-linux-x86_64-default"
+          move_if_exists artifacts/nexsiz-linux-x86_64-json-model/nexsiz \
+                         "nexsiz-${VERSION}-linux-x86_64-json-model"
+          move_if_exists artifacts/nexsiz-linux-x86_64-libafl/nexsiz \
+                         "nexsiz-${VERSION}-linux-x86_64-libafl"
+          move_if_exists artifacts/nexsiz-linux-x86_64-libafl-json/nexsiz \
+                         "nexsiz-${VERSION}-linux-x86_64-libafl-json"
+          move_if_exists artifacts/nexsiz-linux-x86_64-libafl-stable/nexsiz \
+                         "nexsiz-${VERSION}-linux-x86_64-libafl-stable"
+
+          # Windows
+          move_if_exists artifacts/nexsiz-windows-x86_64-default/nexsiz.exe \
+                         "nexsiz-${VERSION}-windows-x86_64-default.exe"
+          move_if_exists artifacts/nexsiz-windows-x86_64-json-model/nexsiz.exe \
+                         "nexsiz-${VERSION}-windows-x86_64-json-model.exe"
+          move_if_exists artifacts/nexsiz-windows-x86_64-libafl/nexsiz.exe \
+                         "nexsiz-${VERSION}-windows-x86_64-libafl.exe"
+          move_if_exists artifacts/nexsiz-windows-x86_64-libafl-json/nexsiz.exe \
+                         "nexsiz-${VERSION}-windows-x86_64-libafl-json.exe"
+
+          # Generate SHA256SUMS
+          cd "$OUT"
+          sha256sum * > SHA256SUMS
+          echo ""
+          echo "=== SHA256SUMS ==="
+          cat SHA256SUMS
+          echo "=================="
+
+          # Export list of files for the release action
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          ls -1 | while read -r f; do echo "$OUT/$f"; done >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Nexsiz ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}   # treat v1.0.0-rc1 as prerelease
+          generate_release_notes: true
+          files: |
+            dist/*
+          body: |
+            ## Nexsiz ${{ github.ref_name }}
+
+            Official pre-built binaries for Linux and Windows.
+
+            ### Linux (x86_64)
+            | Variant | Features |
+            |---------| |----------|
+            | `*-default` | core only |
+            | `*-json-model` | `json-model` |
+            | `*-libafl` | `libafl` |
+            | `*-libafl-json` | `libafl` + `json-model` |
+            | `*-libafl-stable` | `libafl` built with stable toolchain (advisory) |
+
+            ### Windows (x86_64)
+            | Variant | Features |
+            |---------| |----------|
+            | `*-default.exe` | core only |
+            | `*-json-model.exe` | `json-model` |
+            | `*-libafl.exe` | `libafl` |
+            | `*-libafl-json.exe` | `libafl` + `json-model` |
+
+            ### Verification
+            ```bash
+            sha256sum -c SHA256SUMS
+            ```
+
+            ### Notes
+            - NXS existence scripts are **not** included. Build them yourself from the `nxs/` directory (`./nxs/build.sh`).
+            - All binaries are stripped (`-C strip=symbols`).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
