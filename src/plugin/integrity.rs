@@ -3,10 +3,51 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::plugin::integrity
 //!
-//! NEXSIZ – Protocol-Aware Integrity Repair plugins
-//! 
-//! Trait + concrete repairers that apply the correct integrity strategy
-//! for each protocol family. Selected by name via Config / CLI.
+//! Purpose:
+//!   Protocol-aware integrity repairers for mutated messages. This module
+//!   exposes a small, explicit API to fix protocol framing, length-prefixes,
+//!   checksums and other semantic integrity fields after mutation so that
+//!   generated test cases can be sent to targets with correct wire-level
+//!   structure.
+//!
+//! Public API overview:
+//!   - trait IntegrityRepair: common interface for all repairers (Send + Sync).
+//!     Methods:
+//!       - name() -> &str               -- canonical plugin name
+//!       - repair_message(&mut Message) -- fix a single message in-place
+//!       - repair_testcase(&mut TestCase) -- convenience to repair all messages
+//!       - prepare_for_send(&mut TestCase) -- full prepare pipeline (semantic +
+//!                                              protocol-specific heuristics)
+//!   - resolve_integrity(name: Option<&str>) -> Box<dyn IntegrityRepair>
+//!       -- map a name (or None) to a concrete repairer implementation.
+//!   - resolve_integrity_for_protocol(integrity_name, protocol_name)
+//!       -- choose integrity by explicit name or fall back to protocol model.
+//!
+//! Implementations included:
+//!   - DefaultIntegrityRepair: generic semantic-length/checksum repair using
+//!     core::input::integrity helpers.
+//!   - NullIntegrityRepair: no-op (useful for raw/byte-level fuzzing).
+//!   - HttpIntegrityRepair: HTTP-aware repairs (header/body split, Content-Length,
+//!     CRLF normalization).
+//!   - FtpIntegrityRepair, SmtpIntegrityRepair: CRLF and protocol terminator handling.
+//!   - BinaryIntegrityRepair: length-prefix + CRC repair with endianness option
+//!     (big-endian default; BinaryIntegrityRepair::le() for little-endian).
+//!
+//! Design notes and expectations:
+//!   - Repairs are performed in-place and may normalize message buffers to match
+//!     common network encodings (CRLF, header separators, length prefixes).
+//!   - IntegrityRepair implementations are lightweight wrappers around the
+//!     core::input::integrity helpers; side effects and exact heuristics live
+//!     in that module (see crate::input::integrity).
+//!   - prepare_for_send is intended to be the one-stop method prior to actually
+//!     sending a TestCase to a target; it runs message-level repairs and may
+//!     apply additional protocol-level transformations.
+//!   - BinaryIntegrityRepair exposes an explicit endianness flag to support
+//!     protocols that encode length fields in little-endian form.
+//!
+//! Testing:
+//!   Unit tests in this module exercise name resolution and basic repair
+//!   behaviors (length rewriting, Content-Length fixup, and endian-name mapping).
 
 use crate::common::types::{Message, TestCase};
 use crate::input::integrity as core;
