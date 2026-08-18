@@ -3,11 +3,78 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::plugin::pipeline
 //!
-//! NEXSIZ – Custom Protocol Crypto Framework (Phase 3)
-//! 
-//! Extensible stream-cipher trait, generic composition pipeline, and
-//! named crypto profiles. Zero extra dependencies. Fully backward-compatible
-//! with existing Encryptor plugins.
+//! Purpose
+//! -------
+//! Modular, production-ready pipeline for protocol-layer cryptographic transforms
+//! used by nexSIZ testcases. This module exposes:
+//! - A small StreamCipher trait for length-preserving, in-place transforms.
+//! - Built-in adapters: XOR, ChaCha20 stream, and an AEAD (ChaCha20-Poly1305)
+//!   convenience wrapper.
+//! - A composable PipelineEncryptor supporting ordered stages: Cipher, Aead,
+//!   and TLS record framing / fragmentation.
+//! - CryptoProfile builder and a small registry of builtin profiles for common
+//!   operator workflows (null, xor, chacha20, aead, tls, and combined variants).
+//!
+//! Design goals & guarantees
+//! -------------------------
+//! - Separation of concerns: stream ciphers are length-preserving and operate
+//!   in-place; AEAD operations that expand buffers are provided via Stage::Aead
+//!   and the AeadCipher helper (seal/open) to avoid contract violations.
+//! - Composition: stages are applied in-order on encrypt and best-effort reversed
+//!   for decrypt_response (cipher application is symmetric; AEAD/TLS reversal is
+//!   attempted when possible).
+//! - Extensibility: implement StreamCipher + register via PipelineEncryptor to
+//!   support custom transforms without modifying core logic.
+//! - Safety: all shared state is encapsulated behind value types (Arc) and no
+//!   unsafe code is required. Length-affecting operations are explicit to avoid
+//!   accidental payload corruption.
+//!
+//! Operational notes
+//! -----------------
+//! - AEAD: use Stage::Aead or AeadCipher::seal/open; StreamCipher::apply for
+//!   AeadCipher is intentionally a no-op to prevent silent buffer-size bugs.
+//! - TLS framing: TlsFrame stage supports optional fragmentation and can be
+//!   layered after stream transforms to emulate real record layering.
+//! - Nonce management: profiles and individual ciphers support NonceMode
+//!   (Fixed, Incrementing, Random). Tune via CryptoProfile or the
+//!   NEXSIZ_NONCE_MODE environment variable.
+//! - Key/nonce sourcing: resolve_pipeline loads key/nonce from the provided
+//!   parameters or environment variables NEXSIZ_ENC_KEY / NEXSIZ_ENC_NONCE;
+//!   parsing follows crypto::parse_key_material with sensible defaults.
+//!
+//! Performance & implementation details
+//! -----------------------------------
+//! - PipelineEncryptor applies per-field stream ciphers only to non-protected
+//!   fields to respect protocol semantics and avoid encrypting metadata.
+//! - AEAD sealing serializes each message and replaces fields with a single
+//!   binary field containing ciphertext||tag — this simplifies downstream
+//!   transmission but means AEAD is not field-aware.
+//! - TLS decrypt_response performs a best-effort record stripping by parsing
+//!   TLS record headers and concatenating application data when available.
+//!
+//! Configuration & usage
+//! ---------------------
+//! - Use resolve_pipeline(name, key_material) to obtain an Encryptor by name.
+//! - Builtin profiles: null, xor, chacha20, chacha20-poly1305 (aead),
+//!   tls-record, xor+tls, chacha20+tls, aead+tls, c2-stream, c2-aead.
+//! - Freeform pipelines: accept expressions like "chacha20+tls" or "xor+tls".
+//! - Environment knobs:
+//!   - NEXSIZ_ENC_KEY: default key material (if not provided programmatically).
+!//!   - NEXSIZ_ENC_NONCE: default nonce material.
+//!   - NEXSIZ_NONCE_MODE: "fixed" (default), "incrementing"/"inc"/"counter", or "random".
+//!
+//! Testing
+//! -------
+//! - In-module unit tests exercise XOR idempotence, AEAD seal/open, TLS framing,
+//!   profile building, and freeform pipeline parsing.
+//!
+//! Notes & caveats
+//! ---------------
+//! - This module focuses on transform composition and does not implement key
+//!   management, remote handshake state, or secure storage — integrate with
+//!   your secret management in production deployments.
+//! - When combining stages, be explicit about which layers expect length changes
+//!   (AEAD) vs. in-place transforms (stream ciphers) to avoid subtle bugs.
 
 use crate::common::types::{Field, FieldType, TestCase};
 use crate::plugin::crypto::{
