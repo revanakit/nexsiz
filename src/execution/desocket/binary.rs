@@ -3,10 +3,55 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::desocket::binary
 //!
-//! Fallback when no operator DesocketSpec is present.  Ordered probes:
-//!   1. Zero-length frame
-//!   2. Common opcode frames (0x00, 0xFF, 0x01)
-//!   3. Final liveness zero-length
+//! Binary length-prefixed (LP) desocket fallback
+//!
+//! Purpose
+//! --------
+//! This module implements a conservative, protocol-agnostic "desocket" (connection
+//! reset / liveness probe) for services that speak simple binary length-prefixed
+//! protocols. It is used as a fallback when no operator-provided DesocketSpec is
+//! available. The goal is to detect whether the remote endpoint responds to
+//! length-prefixed frames and to exercise simple common opcodes to provoke a
+//! response or otherwise determine liveliness without assuming higher-level
+//! semantics.
+//!
+//! Behavior & heuristics
+//! --------------------
+//! - Supports four framing variants:
+//!     * Be2  — big-endian 2-byte length prefix (u16)
+//!     * Le2  — little-endian 2-byte length prefix (u16)
+//!     * Be4  — big-endian 4-byte length prefix (u32)
+//!     * Le4  — little-endian 4-byte length prefix (u32)
+//! - Probe sequence (ordered, short and conservative):
+//!     1. Send a zero-length frame (length prefix only).
+//!     2. If no response, send a small set of common single-byte payloads wrapped
+//!        in a length prefix: 0x00, 0xFF, 0x01 (each as a separate framed message).
+//!     3. Re-send a final zero-length frame as a liveness check.
+//! - A probe is considered successful if any sent frame elicits a response from
+//!   the peer (recv returns a payload or non-timeout result). Connection closure
+//!   or I/O errors are treated as failures for that probe.
+//! - Probes do not attempt protocol negotiation beyond these lightweight checks,
+//!   and they never mutate application-level state deliberately (only minimal
+//!   stimulus bytes are used).
+//!
+//! Public API (high level)
+//! -----------------------
+//! - BinaryLpDesocket::be2() / le2() / be4() / le4()
+//!     constructors for each framing variant.
+//! - Implements ProtocolReset trait with:
+//!     - name() -> &str
+//!     - is_enabled() -> bool
+//!     - reset(conn: &mut TcpConnector) -> Result<bool>
+//!     - goodbye() -> Option<&[u8]>
+//!
+//! Notes for maintainers
+//! ---------------------
+//! - length encoding: 2-byte variants cast the length to u16 before serializing;
+//!   4-byte variants serialize u32 directly. The frame() helper constructs the
+//!   final wire bytes as [length-prefix | payload].
+//! - The heuristic is intentionally lightweight to avoid making strong
+//!   assumptions about application-layer semantics. If you need protocol-specific
+//!   behavior, provide a DesocketSpec/operator instead of relying on this fallback.
 
 use super::ProtocolReset;
 use crate::common::error::Result;
