@@ -3,8 +3,53 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::desocket::builtin
 //!
-//! Each variant sends a minimal “return to ready” sequence over the live
-//! TCP connection. Success is determined by response codes when available.
+//! Description:
+//! This module implements a small set of built-in, protocol-aware "desocket"
+//! (connection-reset / session-recovery) strategies used by the fuzzer to
+//! attempt an orderly return of a live TCP session to a known-good state.
+//!
+//! Responsibilities:
+//! - Provide minimal, well-formed protocol-level sequences that request the
+//!   server to abandon in-progress operations and return the session to an
+//!   idle/ready state (where possible).
+//! - Expose a unified ProtocolReset implementation so the caller can attempt
+//!   to reuse the existing TcpConnector connection instead of reconnecting.
+//!
+//! Supported protocols:
+//! - FTP   : ABOR, REIN, NOOP fallbacks; checks standard 2xx/220/200 responses.
+//! - SMTP  : RSET and response-code validation (250 / 2xx success range).
+//! - MQTT  : Sends DISCONNECT (fixed header 0xE0 0x00); server is expected to
+//!           close the socket — caller should reconnect (soft-failure).
+//! - HTTP  : Minimal OPTIONS probe with Connection: keep-alive; accepts any
+//!           response that begins with "HTTP/" as a successful probe.
+//!
+//! Semantics:
+//! - reset(conn) -> Result<bool, NexsizError>
+//!     * Ok(true)  => connection appears reusable (no reconnect required).
+//!     * Ok(false) => connection should be considered unusable; caller should
+//!                   close/reconnect as appropriate.
+//!     * Err(_)    => I/O or connector error propagated via NexsizError.
+//! - goodbye() -> Option<&[u8]>
+//!     * Returns an optional "polite" closing sequence bytes the caller may
+//!       send before tearing down the connection (if applicable).
+//!
+//! Design notes / constraints:
+//! - All sequences are best-effort and intentionally conservative — the code
+//!   avoids aggressive state mutation and prefers to signal "reconnect" when
+//!   ambiguity exists (fail-safe behavior for fuzzing sessions).
+//! - The module relies on TcpConnector to perform actual I/O and to indicate
+//!   read timeouts; timing and low-level socket errors are surfaced via Result.
+//! - This implementation targets TCP-based request/response protocols only.
+//! - Keep changes to these sequences protocol-aware and idempotent when possible.
+//!
+//! Testing & extension:
+//! - Unit tests validate naming and goodbye sequences; protocol probes are
+//!   intentionally minimal to allow integration tests against real servers.
+//! - To add a new protocol, implement a Kind variant, a reset_<proto> method
+//!   following the established conventions, and expose a constructor + goodbye.
+//!
+//! See also: ProtocolReset trait (contract for name(), is_enabled(), reset(),
+//! goodbye()) and the TcpConnector implementation for recv/send/timeouts.
 
 use super::ProtocolReset;
 use crate::common::error::{NexsizError, Result};
