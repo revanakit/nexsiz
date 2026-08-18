@@ -3,12 +3,73 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::oracle_bridge
 //!
-//! Python Oracle bridge – reverse-RPC for is_interesting()
+//! Description
+//! -----------
+//! Reverse-RPC bridge that lets a Python process act as a live is_interesting
+//! oracle. When a client calls register_oracle the connection enters oracle
+//! mode; thereafter every ExecutionResult that reaches the BridgedOracle is
+//! serialised, pushed to Python, and answered with a boolean. Timeouts and
+//! disconnects fall back to the configured native oracle so the campaign never
+//! stalls.
 //!
-//! When a Python client calls `register_oracle`, its connection enters
-//! oracle mode. The engine's BridgedOracle serialises each ExecutionResult,
-//! sends it to Python, and waits (with timeout) for a boolean answer.
-//! On timeout / disconnect / error the configured fallback oracle is used.
+//! Core responsibilities
+//! ---------------------
+//! - Maintain a single active reverse-RPC channel (mpsc + Condvar).
+//! - Assign monotonic request IDs and wait for matching responses with a
+//!   bounded timeout (DEFAULT_ORACLE_TIMEOUT_MS, overridable).
+//! - Expose hits / misses counters for observability.
+//! - Provide BridgedOracle – an Oracle implementation that prefers the Python
+//!   answer when the bridge is active and otherwise delegates to a fallback.
+//! - Serialise ExecutionResult into a compact JSON subset understood by the
+//!   Python side (utf8 / base64 encoding for response bodies).
+//!
+//! Reverse-RPC flow
+//! ----------------
+//! 1. Python client issues register_oracle → server enters oracle mode and
+//!    calls OracleBridge::register(), obtaining a Receiver<OracleRequest>.
+//! 2. Engine / workers call BridgedOracle::is_interesting → OracleBridge::query.
+//! 3. query builds a JSON line {id, method:"is_interesting", params:…}, sends
+//!    it through the channel, then waits on the Condvar for a response or
+//!    timeout.
+//! 4. The oracle-mode thread in server.rs writes the line to Python, reads the
+//!    answer, and calls deliver_response(id, interesting).
+//! 5. On timeout, disconnect, or inactive bridge the query returns None and
+//!    BridgedOracle falls back to the native oracle.
+//!
+//! Concurrency & safety
+//! --------------------
+//! - active flag is an AtomicBool (Relaxed is sufficient – the worst case is
+//!   one extra fallback call).
+//! - Request channel is guarded by Mutex<Option<Sender>> so register/unregister
+//!   are race-free.
+//! - Response map + Condvar implement a classic wait/notify pattern; the map
+//!   is cleared of timed-out entries by the waiter itself.
+//! - Only one Python oracle client is supported at a time (by design). A new
+//!   register replaces the previous channel.
+//!
+//! Timeout & fallback semantics
+//! ----------------------------
+//! - Default timeout is 100 ms. This is intentionally aggressive so a slow
+//!   or stuck Python process cannot drag campaign throughput down.
+//! - Crash / hang / ConnectionReset outcomes short-circuit to true before any
+//!   Python round-trip (safety net).
+//! - On any failure path (inactive, send error, timeout) the miss counter is
+//!   incremented and the fallback oracle is used.
+//!
+//! Design notes
+//! ------------
+//! - Pure push of the result; Python never pulls. This keeps the hot path
+//!   simple and avoids introducing a second control plane.
+//! - The JSON schema is deliberately minimal and matches the subset handled
+//!   by the local json.rs module (no serde dependency).
+//! - BridgedOracle implements the same Oracle trait used by the rest of the
+//!   engine, so the rest of the code stays unaware of the Python path.
+//!
+//! See Also
+//! --------
+//! - server.rs          : oracle-mode accept/read/write loop
+//! - handler.rs         : register_oracle command that triggers the mode switch
+//! - monitor/oracle.rs  : Oracle trait and native implementations
 
 use crate::common::types::{ExecutionResult, OutcomeClass};
 use crate::monitor::oracle::Oracle;
