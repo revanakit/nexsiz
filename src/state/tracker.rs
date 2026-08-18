@@ -3,7 +3,80 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::state::tracker
 //!
-//! Hybrid state awareness tracker with grey-box coverage integration.
+//! Purpose
+//! -------
+//! Lightweight hybrid state-awareness tracker that combines black-box response
+//! fingerprints with optional grey-box coverage signals to detect and label
+//! distinct protocol states and inter-state transitions during fuzzing runs.
+//! The tracker is intended to help the mutator and corpus management layers
+//! prioritize inputs that exercise new states or reveal new edges (including
+//! coverage-driven edges).
+//!
+//! Key responsibilities
+//! --------------------
+//! - Produce a compact state fingerprint for an execution result by folding:
+//!   - response code sequence, truncated response content, and execution
+//!     state_hash (from the target harness), and optionally
+//!   - coverage map hash (when supplied by a coverage provider).
+//! - Maintain a bounded set of observed states and transition counts.
+//! - Track non-coverage edges (response-code sequences) and treat coverage
+//!   edges (new map edges / map-hash) as first-class signals.
+//! - Evict low-importance states when capacity is exceeded (simple hit-count
+//!   based eviction) to bound memory usage in long-running campaigns.
+//!
+//! Design & behavior notes
+//! ----------------------
+//! - State fingerprinting is intentionally conservative and fast: response
+//!   bodies are truncated (64 bytes) before hashing to avoid expensive work
+//!   on large responses while still capturing discriminating content.
+//! - Transitions are stored as a map keyed by (prev_state, next_state) and
+//!   incremented on every observed transition; edges are recorded separately
+//!   for protocol-level or coverage-derived signals.
+//! - When CoverageFeedback is provided, the tracker folds the coverage map
+//!   hash into the state fingerprint and increments edge counts for new
+//!   coverage edges; this enables grey-box detection of previously-unseen
+//!   execution paths without requiring full coverage orchestration.
+//! - A configurable max_states parameter bounds the number of retained
+//!   state descriptors; the least-hit state (excluding the most-recently
+//!   observed key) is removed when the limit is exceeded.
+//! - response_weight is reserved for future weighted fingerprinting or
+//!   similarity metrics; currently it is not used in the hashing algorithm.
+//!
+//! Threading & safety
+//! ------------------
+//! - Mutable tracker state is guarded by a Mutex (TrackerInner). The public
+//!   API is thread-friendly: callers may share a StateTracker across worker
+//!   threads and call observe()/inspectors concurrently; internal locking
+//!   serializes updates to the maps.
+//!
+//! Performance considerations
+//! --------------------------
+//! - Hashing and map operations are intended to be cheap per-observation.
+//! - Truncating response bodies and folding pre-computed coverage hashes
+//!   reduces per-call work; tune max_states to balance memory use vs. recall.
+//!
+//! Usage
+//! -----
+//! - Call observe(result, prev_state, coverage) for each execution to update
+//!   the registry; it returns (new_state, new_edge) booleans to indicate
+//!   whether the observation introduced a novel state or edge.
+//! - Query helpers: state_count(), edge_count(), transition_count(),
+//!   top_states(n) for diagnostics and reporting.
+//!
+//! Testing & validation
+//! --------------------
+//! - Unit tests bundled in this module exercise new-state detection,
+//!   coverage-driven edge recognition, and basic eviction behaviour.
+//!
+//! Notes & caveats
+//! ---------------
+//! - State fingerprints are not cryptographic guarantees against collisions.
+//!   Collisions may occur for different reasons (truncation, identical
+//!   visible outputs); choose max_states and any future weighting policies
+//!   to match your operational risk profile.
+//! - This component focuses on lightweight, practical state-tracking for
+//!   fuzzing workflows — it does not replace full protocol state modelling or
+//!   external session tracking when those are required.
 
 use crate::common::types::*;
 use crate::common::utils::{hash_bytes, hash_combine};
