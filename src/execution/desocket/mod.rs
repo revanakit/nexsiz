@@ -3,17 +3,61 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::desocket::mod
 //!
-//! Snapshot / Desocketing track (complete + JSON-driven extension):
-//!   Phase 2 – ProtocolReset trait, BuiltinDesocket, SocketState
-//!   Phase 3 – restore_epoch coordination with workers, desocket counters,
-//!             cost-aware energy on successful post-desocket interesting cases
-//!   Phase 4 – Operator-defined DesocketSpec (JSON models) + BinaryLp heuristic
+//! Overview:
+//! This module contains the "desocket" (protocol-level connection recovery)
+//! subsystem used by the fuzzer to attempt orderly session recovery and to
+//! decide whether a live TCP connection can be reused or must be re-established.
+//! It centralizes provider selection, the ProtocolReset contract, and helper
+//! utilities that coordinate soft resets and reconnects.
 //!
-//! Desocketing here means:
-//!   1. Protocol-aware reset sequences (QUIT / RSET / DISCONNECT / …)
-//!   2. SocketState tracking (clean vs polluted)
-//!   3. Integration with ReusePolicy and post-snapshot-restore reconnect
-//!   4. JSON-driven sequences (SpecDesocket) and length-prefixed heuristics
+//! Key concepts:
+//! - ProtocolReset: trait that providers implement to perform protocol-aware
+//!   reset probes over an existing TcpConnector (name/is_enabled/reset/goodbye).
+//! - Built-in providers: protocol-specific, heuristic resets for common text
+//!   protocols (FTP, SMTP, HTTP, MQTT) and length-prefixed binary heuristics.
+//! - SpecDesocket: operator-driven provider that sends exact byte sequences
+//!   specified in a DesocketSpec (useful for reproducible, model-driven reset).
+//! - NullDesocket: a deterministic no-op provider representing "disabled" policy.
+//! - SocketState: lightweight per-worker readiness tracking (Clean / Polluted /
+//!   Disconnected) used to decide when to attempt desocketing.
+//!
+//! Responsibilities:
+//! - Resolve an appropriate ProtocolReset implementation from a ProtocolModel
+//!   or protocol name (resolve_desocket_from_model / resolve_desocket).
+//! - Provide a safe helper (reset_or_reconnect) that attempts a soft reset and
+//!   falls back to a full reconnect on soft failure or I/O errors.
+//! - Export built-in and spec-driven providers for use by worker logic.
+//!
+//! Semantics:
+//! - reset(conn) -> Result<bool, NexsizError>
+//!     * Ok(true)  => connection appears reusable (no reconnect required).
+//!     * Ok(false) => provider could not recover the session (caller should reconnect).
+//!     * Err(_)    => hard I/O error occurred; connection is not usable.
+//! - Providers declare is_enabled() to indicate whether they perform any work.
+//! - goodbye() returns optional bytes a caller may send politely before closing.
+//!
+//! Design notes / rationale:
+//! - Conservative, fail-safe defaults: ambiguous or repeated soft failures bias
+//!   toward reconnecting to avoid contaminating subsequent test cases.
+//! - Two resolution pathways: operator-specified DesocketSpec takes precedence,
+//!   else a best-effort mapping of model names to built-in heuristics is used.
+//! - Keep provider implementations focused and testable; network I/O is
+//!   delegated to TcpConnector and converted into the boolean success contract.
+//!
+//! Usage & extension:
+//! - To add a new provider implement ProtocolReset and expose a constructor
+//!   (and register a name mapping in resolve_desocket if desired).
+//! - Use SpecDesocket for deterministic, model-driven reset sequences; use
+//!   BuiltinDesocket for common protocol heuristics; use NullDesocket to opt out.
+//!
+//! Testing & operational notes:
+//! - Unit tests exercise resolution behaviour, naming, and trivial provider
+//!   expectations; integration tests should validate probe sequences against
+//!   real servers when available.
+//!
+//! See also: ProtocolReset trait, TcpConnector (I/O/timeout semantics),
+//! desocket providers in this module (builtin, spec, null, binary) and
+//! SocketState for worker-level readiness tracking.
 
 mod binary;
 mod builtin;
