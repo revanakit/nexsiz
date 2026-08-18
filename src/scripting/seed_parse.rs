@@ -3,7 +3,74 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::seed_parse
 //!
-//! Parse structured seed JSON into TestCase
+//! Description
+//! -----------
+//! Converts a structured JSON seed description (as received by the
+//! add_seed_structured RPC command) into a fully-formed TestCase that can be
+//! injected into the shared corpus. Supports multi-message sequences, typed
+//! fields, protected markers, fixed sizes, and multiple data encodings.
+//!
+//! Core responsibilities
+//! ---------------------
+//! - Parse the top-level "messages" array into Message objects.
+//! - Map each field's type string onto the FieldType enum (command, length,
+//!   checksum, numeric, payload, string, binary, or Custom).
+//! - Decode field data from utf8 / base64 / hex / single-byte number forms.
+//! - Honour optional "protected" and "size" attributes so that integrity
+//!   repair and mutator size constraints remain consistent with native seeds.
+//! - Return a clear error string on any structural or encoding failure so the
+//!   RPC handler can surface it to the operator.
+//!
+//! Structured seed contract (add_seed_structured)
+//! ----------------------------------------------
+//! ```json
+//! {
+//!   "name": "login",                    // optional, currently unused by parser
+//!   "messages": [
+//!     {
+//!       "name": "user",
+//!       "fields": [
+//!         {"name":"cmd","type":"command","data":"USER"},
+//!         {"name":"sp","type":"binary","data":" ","protected":true},
+//!         {"name":"arg","type":"string","data":"anonymous"},
+//!         {"name":"crlf","type":"binary","data":"\r\n","protected":true}
+//!       ]
+//!     }
+//!   ]
+//! }
+//! ```
+//! - messages must be a non-empty array.
+//! - Each message must contain a "fields" array.
+//! - Field data may be supplied as a plain string, a number (single byte),
+//!   or an object with "encoding" (utf8|base64|hex) + "data".
+//! - "protected": true marks the field so the mutator will not alter it.
+//! - "size": N forces a fixed length (enforced by the mutator later).
+//!
+//! Field-type mapping
+//! ------------------
+//! command|cmd → Command
+//! length|len → Length
+//! checksum|chk|crc → Checksum
+//! numeric|num|int → Numeric
+//! payload|pay → Payload
+//! string|str|text → String
+//! binary|bin|raw → Binary
+//! anything else → Custom(name)
+//!
+//! Design notes
+//! ------------
+//! - The parser is intentionally strict on structure (missing messages/fields
+//!   → error) but permissive on encodings (unknown encoding falls back to
+//!   utf8; empty data is rejected).
+//! - TestCase id is set to 0; the corpus assigns a real id on insertion.
+//! - No dependency on ProtocolModel – structured seeds are protocol-agnostic
+//!   and rely on the operator (or a prior register_protocol) for semantics.
+//!
+//! See Also
+//! --------
+//! - handler.rs         : add_seed_structured command that calls this module
+//! - common/types.rs    : TestCase / Message / Field / FieldType definitions
+//! - input/corpus.rs    : uniqueness check performed after construction
 
 use crate::common::types::{Field, FieldType, Message, TestCase};
 use crate::scripting::json::JsonValue;
