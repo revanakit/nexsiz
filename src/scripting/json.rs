@@ -3,10 +3,56 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::json
 //!
-//! Minimal JSON helpers for the RPC control plane (no serde).
-//! Supports the subset needed by the campaign-control protocol:
-//! objects, strings, numbers, bools, null, and flat arrays of numbers/strings.
-//! Not a general-purpose JSON library.
+//! Description
+//! -----------
+//! Minimal, pure-stdlib JSON helpers used exclusively by the RPC control
+//! plane. Implements only the subset required by the campaign-control
+//! protocol (objects, strings, numbers, bools, null, and flat arrays).
+//! Intentionally not a general-purpose JSON library – no serde, no streaming,
+//! no arbitrary nesting beyond what the protocol needs.
+//!
+//! Core responsibilities
+//! ---------------------
+//! - Provide a lightweight JsonValue enum (Null / Bool / Number / String /
+//!   Array / Object) with convenient accessors (as_str, as_f64, as_u64,
+//!   as_bool, get, get_str, get_u64).
+//! - Serialise JsonValue → String via stringify (stable key ordering for
+//!   tests, proper escaping of control characters).
+//! - Parse a JSON string → JsonValue via a minimal recursive-descent parser.
+//! - Offer convenience builders (obj, s, n, b) so handlers can construct
+//!   responses without verbose HashMap boilerplate.
+//!
+//! Supported subset
+//! ----------------
+//! - Values: null, true/false, numbers (integer or float, optional exponent),
+//!   strings (with standard escapes including \uXXXX), arrays, objects.
+//! - Objects use HashMap; stringify sorts keys for deterministic output.
+//! - Nested structures are supported to the depth the protocol actually uses
+//!   (typically 2–3 levels).
+//! - No support for: comments, trailing commas, NaN/Infinity, big integers
+//!   beyond f64, or streaming/incremental parse.
+//!
+//! Design constraints
+//! ------------------
+//! - Zero external dependencies. Keeps the binary lean and the attack surface
+//!   of the control plane minimal.
+//! - Fail-fast parse errors return a plain String; the RPC handler wraps them
+//!   into the standard error envelope.
+//! - Numbers are stored as f64; integer-looking values are emitted without a
+//!   decimal point on serialise for readability.
+//! - The parser is strict about trailing data after a complete value.
+//!
+//! API surface used by the rest of scripting/
+//! ------------------------------------------
+//! - parse / stringify          : request/response boundary
+//! - JsonValue::{get,get_str,…} : handler param extraction
+//! - obj / s / n / b            : response construction in handler & bridges
+//!
+//! See Also
+//! --------
+//! - handler.rs         : primary consumer of parse / stringify / builders
+//! - protocol.rs        : method list and PROTOCOL_VERSION constants
+//! - All *_bridge.rs    : use JsonValue for params and status payloads
 
 use std::collections::HashMap;
 
