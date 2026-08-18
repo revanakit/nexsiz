@@ -60,7 +60,7 @@
 //! - Freeform pipelines: accept expressions like "chacha20+tls" or "xor+tls".
 //! - Environment knobs:
 //!   - NEXSIZ_ENC_KEY: default key material (if not provided programmatically).
-!//!   - NEXSIZ_ENC_NONCE: default nonce material.
+//!   - NEXSIZ_ENC_NONCE: default nonce material.
 //!   - NEXSIZ_NONCE_MODE: "fixed" (default), "incrementing"/"inc"/"counter", or "random".
 //!
 //! Testing
