@@ -3,15 +3,84 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::protocol_bridge
 //!
-//! Python Protocol plugin bridge
+//! Description
+//! -----------
+//! Push-style bridge that allows a Python client to inject a complete
+//! ProtocolModel (dictionary, delimiter, length-prefix flag, optional
+//! productions / sequence hints) into a running campaign. Once registered the
+//! model is snapshotted by workers at spawn time; the hot mutation path stays
+//! zero-overhead (no reverse-RPC per mutation).
 //!
-//! Python pushes a ProtocolModel definition (dictionary, delimiter,
-//! length-prefix flag, optional grammar productions). The engine uses that
-//! model when spawning workers. This is a *push* design (not reverse-RPC per
-//! mutation) so the hot path stays zero-overhead once the model is loaded.
+//! Core responsibilities
+//! ---------------------
+//! - Store a single Python-supplied ProtocolModel behind an AtomicBool +
+//!   RwLock so registration is race-free and reads are cheap.
+//! - Expose BridgedProtocol – a ProtocolPlugin that prefers the bridge model
+//!   when active and otherwise falls back to the native plugin.
+//! - Parse the register_protocol params object (JSON) into a fully-formed
+//!   ProtocolModel via model_from_params, including dictionary expansion from
+//!   productions and sequence_hints.
+//! - Provide status helpers (name, dictionary_len, is_active) used by the
+//!   RPC handler and by the Engine status line.
 //!
-//! Live mid-campaign worker swap is a documented v1 limitation – re-register
-//! before starting the campaign, or restart workers in a future iteration.
+//! Push design rationale
+//! ---------------------
+//! - Reverse-RPC on every mutation would destroy throughput and complicate
+//!   integrity ownership. A one-shot push of the model keeps the worker loop
+//!   identical to the native path after the initial snapshot.
+//! - Live mid-campaign worker swap is intentionally out of scope for v1.
+//!   Operators must register the model before (or very early in) the campaign,
+//!   or restart workers in a future iteration that supports dynamic rebind.
+//!
+//! Params contract (register_protocol)
+//! -----------------------------------
+//! Expected JSON shape (all fields optional except where noted):
+//! ```json
+//! {
+//!   "name": "myproto",
+//!   "dictionary": [ {"encoding":"utf8","data":"USER"}, {"encoding":"base64","data":"…"}, "PASS" ],
+//!   "length_prefixed": false,
+//!   "delimiter": 10,
+//!   "productions": [
+//!      { "name": "cmd", "tokens": ["USER","PASS"], "suffix": "\r\n" }
+//!   ],
+//!   "sequence_hints": ["login", "cwd", "retr"]
+//! }
+//! ```
+//! - sequence_hints are folded into the dictionary as utf8 tokens (keeps
+//!   ProtocolModel unchanged while still guiding mutation).
+//! - An empty dictionary is replaced by a minimal sensible set so the
+//!   mutator always has material.
+//!
+//! Concurrency & ownership
+//! -----------------------
+//! - active flag is AtomicBool (Relaxed).
+//! - model is protected by RwLock; register/unregister take the write lock,
+//!   model() takes the read lock and clones.
+//! - Only one model is live at a time; a new register overwrites the previous.
+//!
+//! Integration points
+//! ------------------
+//! - Engine snapshots the model (via protocol_bridge.model()) just before
+//!   spawning workers.
+//! - BridgedProtocol implements ProtocolPlugin so the rest of the plugin
+//!   resolution path remains unaware of the Python origin.
+//! - handler.rs routes register_protocol / unregister_protocol /
+//!   protocol_status / get_protocol to this bridge.
+//!
+//! Design notes
+//! ------------
+//! - model_from_params is deliberately defensive: unknown encodings fall back
+//!   to utf8, invalid entries are skipped, and a floor dictionary is always
+//!   present.
+//! - Desocket / message-spec / sequence-spec fields are left empty; a future
+//!   extension can populate them without changing the bridge API.
+//!
+//! See Also
+//! --------
+//! - handler.rs         : register_protocol command surface
+//! - input/model.rs     : ProtocolModel definition
+//! - plugin/protocol.rs : ProtocolPlugin trait and native resolvers
 
 use crate::input::model::{ModelChecksum, ModelEndian, ProtocolModel};
 use crate::plugin::protocol::ProtocolPlugin;
