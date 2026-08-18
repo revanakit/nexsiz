@@ -3,9 +3,76 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::server
 //!
-//! Unix domain socket RPC server (+ oracle-mode reverse-RPC loop).
-//! On non-Unix platforms RpcServer::start returns an explicit error — RPC is
-//! a Linux/macOS operator feature; Windows builds remain usable without it.
+//! Description
+//! -----------
+//! Unix-domain socket RPC server that exposes the campaign-control surface
+//! defined by handler.rs. Accepts concurrent client connections, routes each
+//! line-delimited JSON request to RpcContext::handle_line, and implements the
+//! special reverse-RPC loop used when a Python client registers as a live
+//! oracle.
+//!
+//! Core responsibilities
+//! ---------------------
+//! - Bind a non-blocking UnixListener on the configured path (default or
+//!   NEXSIZ_RPC_SOCK / --rpc-sock).
+//! - Spawn a dedicated accept thread that hands each accepted stream to a
+//!   short-lived client-handler thread.
+//! - Forward ordinary requests to the handler and write the JSON response
+//!   back to the client.
+//! - Detect the register_oracle command and transition the connection into
+//!   oracle mode (run_oracle_mode), where the engine pushes is_interesting
+//!   requests and the Python side answers them.
+//! - Clean up the socket path on Drop and honour the shared stop AtomicBool.
+//!
+//! Platform constraints
+//! --------------------
+//! - Full implementation is cfg(unix) only. On non-Unix platforms
+//!   RpcServer::start returns an explicit error string; the rest of the
+//!   fuzzer remains fully usable without RPC.
+//! - This is intentional: Unix domain sockets are the operator feature for
+//!   Linux/macOS campaign steering. Windows builds stay lean.
+//!
+//! Concurrency model
+//! -----------------
+//! - One long-lived accept thread ("nexsiz-rpc").
+//! - One short-lived client thread per accepted connection
+//!   ("nexsiz-rpc-client").
+//! - All shared state lives inside the Arc<RpcContext> passed from the Engine.
+//! - Cooperative shutdown is driven by the same AtomicBool used by workers
+//!   and the Engine; the accept loop polls it every 50 ms.
+//!
+//! Oracle-mode reverse-RPC
+//! -----------------------
+//! - After a successful register_oracle the connection leaves the normal
+//!   request/response path and enters a tight poll loop:
+//!     1. Drain pending OracleRequest messages from the bridge channel and
+//!        write them to the Python client.
+//!     2. Read Python responses (50 ms read timeout) and deliver them back
+//!        to the OracleBridge via deliver_response.
+//! - On disconnect, timeout, or stop flag the mode is exited and the bridge
+//!   is unregistered, restoring the default oracle.
+//!
+//! Lifecycle & cleanup
+//! -------------------
+//! - Drop implementation sets the stop flag, removes the socket file, and
+//!   joins the accept thread.
+//! - Client threads exit cleanly on EOF, write error, or stop signal.
+//! - No global state is left behind after the server is dropped.
+//!
+//! Design notes
+//! ------------
+//! - Non-blocking accept + short sleeps keep the accept loop responsive
+//!   without busy-waiting.
+//! - Read/write timeouts on client streams prevent a single stalled Python
+//!   process from blocking the whole RPC surface.
+//! - The server never owns campaign logic; it is a pure transport + mode
+//!   switcher that delegates everything to RpcContext and the bridges.
+//!
+//! See Also
+//! --------
+//! - handler.rs         : command dispatch and RpcContext
+//! - oracle_bridge.rs   : request/response channel used by oracle mode
+//! - engine.rs          : owns the RpcServer instance for the campaign lifetime
 
 use crate::scripting::handler::RpcContext;
 use std::sync::atomic::{AtomicBool, Ordering};
