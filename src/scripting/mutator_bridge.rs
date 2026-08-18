@@ -3,16 +3,80 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::scripting::mutator_bridge
 //!
-//! Python Mutator hooks bridge (push extras – zero hot-path RPC)
-//! 
-//! Push model only: extra dictionary tokens are merged into each worker's
-//! mutator. No reverse-RPC on the mutation hot path (avoids throughput
-//! collapse and keeps integrity ownership unambiguous).
+//! Description
+//! -----------
+//! Push-only bridge that injects extra dictionary tokens into every worker's
+//! Mutator at runtime. Designed so the mutation hot path never performs
+//! reverse-RPC: workers simply observe a generation counter and re-merge the
+//! extra dictionary when it changes. This preserves throughput and keeps
+//! integrity-repair ownership unambiguous.
 //!
-//! Pre/post mutation *callbacks* that transform payloads are intentionally
-//! omitted from v1 reverse-RPC – they would sit between mutate and repair
-//! and risk double-repair if they also fixed framing. Dictionary / weight
-//! hints cover the operational need without that hazard.
+//! Core responsibilities
+//! ---------------------
+//! - Hold a shared extra dictionary (Vec<Vec<u8>>) behind an AtomicBool +
+//!   RwLock.
+//! - Expose register (replace) and extend (append, deduplicating) operations.
+//! - Maintain a monotonic generation counter; workers re-merge when the
+//!   counter advances.
+//! - Parse register_mutator params (extra_dictionary / dictionary aliases)
+//!   into raw token bytes via dictionary_from_params.
+//! - Provide status helpers (is_active, dictionary_len, generation) used by
+//!   the RPC handler and Engine status reporting.
+//!
+//! Why push-only (no pre/post mutation callbacks)
+//! ----------------------------------------------
+//! - A reverse-RPC callback that transforms the payload after mutate() would
+//!   sit between mutation and integrity repair. If the callback also fixed
+//!   framing/checksums it would risk double-repair or ownership confusion.
+//! - Dictionary / weight hints cover the practical operational need (inject
+//!   protocol-specific tokens, bias toward interesting sequences) without
+//!   introducing that hazard.
+//! - The design keeps Mutator::mutate and the subsequent prepare_for_send
+//!   path identical to the native case.
+//!
+//! Worker integration
+//! ------------------
+//! - Each worker caches the last observed generation.
+//! - On every iteration it compares against mutator_bridge.generation();
+//!   if different it calls mutator.extend_dictionary(&extra) and updates the
+//!   local generation.
+//! - Unregister clears the dictionary and bumps generation so workers drop
+//!   the extras on the next cycle.
+//!
+//! Concurrency model
+//! -----------------
+//! - active: AtomicBool (Relaxed).
+//! - extra_dictionary: RwLock; register/extend/unregister take the write lock.
+//! - generation: AtomicU64, incremented on every mutating operation so that
+//!   even an extend that adds nothing still forces workers to re-check.
+//! - Safe for concurrent register from the RPC thread and reads from many
+//!   worker threads.
+//!
+//! Params contract (register_mutator)
+//! ----------------------------------
+//! ```json
+//! {
+//!   "extra_dictionary": [ "USER", {"encoding":"base64","data":"…"}, 0x0a ],
+//!   "dictionary": [ … ],          // alias for extra_dictionary
+//!   "extend": true                // optional; default false → replace
+//! }
+//! ```
+//! Tokens may be plain strings, {encoding,data} objects, or single-byte
+//! numbers. Empty / invalid entries are skipped; duplicates are removed.
+//!
+//! Design notes
+//! ------------
+//! - No reverse-RPC on the mutation path is a hard invariant of v1.
+//! - The bridge never owns a Mutator instance; it only supplies material that
+//!   workers merge into their own mutators.
+//! - Future weight / energy hints can be added alongside the dictionary
+//!   without changing the generation-based re-merge protocol.
+//!
+//! See Also
+//! --------
+//! - handler.rs         : register_mutator / mutator_status commands
+//! - input/mutator.rs   : Mutator::extend_dictionary consumer
+//! - execution/worker.rs: generation check + re-merge loop
 
 use crate::scripting::json::JsonValue;
 use std::sync::atomic::{AtomicBool, Ordering};
