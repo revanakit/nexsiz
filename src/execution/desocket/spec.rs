@@ -3,9 +3,51 @@
 //! AUTHOR     ::     Revana 
 //! MODULE     ::     src::execution::desocket::spec
 //!
-//! SpecDesocket sends the exact byte sequences provided by the operator
-//! (via ProtocolModel.desocket or a JSON model).  No heuristics — the
-//! operator is the source of truth for protocol-level reset.
+//! Description:
+//! A deterministic, operator-driven desocket provider that sends exact byte
+//! sequences supplied in a DesocketSpec. Unlike built-in, heuristic providers,
+//! this implementation performs no protocol inference — the supplied sequences
+//! are treated as authoritative instructions for probing or resetting the
+//! remote endpoint's session state.
+//!
+//! Responsibilities:
+//! - Transmit each sequence from DesocketSpec in order and evaluate the
+//!   outcome according to the spec's semantics (success_on_response / strict
+//!   non-empty response checks).
+//! - Provide an optional "goodbye" byte sequence that callers may send prior
+//!   to closing the connection.
+//! - Implement the ProtocolReset contract so callers can attempt reuse of the
+//!   existing TcpConnector before deciding to reconnect.
+//!
+//! Semantics & behavior:
+//! - from_spec(model_name, spec) constructs a named provider "spec:<model_name>".
+//! - probe(conn, data):
+//!     * If conn is not connected -> Ok(false).
+//!     * If data is empty -> Ok(true) (no-op success).
+//!     * Sends data, then awaits recv(512).
+//!     * If success_on_response is true -> treat any non-hard-close outcome as success.
+//!     * Otherwise require a non-timeout, non-empty response to consider the probe successful.
+//! - reset(conn):
+//!     * Iterates sequences; returns Ok(true) on first successful probe.
+//!     * Returns Ok(false) if all sequences fail or the connection is closed.
+//!
+//! Design notes / constraints:
+//! - This module intentionally avoids heuristics and time-based guessing — it is
+//!   designed for reproducible, operator-specified reset sequences (e.g., model
+//!   files or JSON-deserialized DesocketSpec objects).
+//! - Probes are conservative and assume the caller prefers a reconnect on
+//!   ambiguity (fail-safe for fuzzing sessions).
+//! - Network I/O is delegated to TcpConnector; the implementation converts I/O
+//!   outcomes into the ProtocolReset boolean contract rather than exposing raw errors.
+//!
+//! Testing & extension:
+//! - Unit tests validate enabled/disabled behavior, name formation, and goodbye
+//!   plumbing; integration tests can run sequences against real servers.
+//! - To add alternative operator-driven logic, provide a different DesocketSpec
+//!   or implement a new ProtocolReset that wraps more complex validation rules.
+//!
+//! See also: ProtocolReset trait (name/is_enabled/reset/goodbye) and TcpConnector
+//! for expected I/O and timeout semantics.
 
 use super::ProtocolReset;
 use crate::common::error::Result;
