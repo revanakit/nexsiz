@@ -76,7 +76,7 @@ jobs:
           echo "Agent files present."
 
       - name: Setup Node.js (syntax check only)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
