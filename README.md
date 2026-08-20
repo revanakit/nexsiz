@@ -1,4 +1,4 @@
-# nexsiz the fuzzer 
+# Nexsiz The Fuzzer 
 
 <p align="center">
   <img src="nexsiz-mascot.png" width="400" height="400" alt="Logo">
