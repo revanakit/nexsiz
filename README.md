@@ -1,7 +1,7 @@
 # Nexsiz The Fuzzing 
 
 <p align="center">
-  <img src="nexsiz.jpg" width="400" height="400" alt="Logo">
+  <img src="nexsiz-mascot.png" width="400" height="400" alt="Logo">
 </p>
 
 ### Stateful Network Protocol Fuzzer
