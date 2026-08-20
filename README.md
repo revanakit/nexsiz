@@ -6,9 +6,7 @@
 
 **nexsiz author**
 
-[![x](https://img.shields.io/badge/Revana-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/revanakit)
-
-**documentation**
+[![x](https://img.shields.io/badge/Revana-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/revanakit)**documentation**
 
 [![x](https://img.shields.io/badge/nexsiz-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
 
