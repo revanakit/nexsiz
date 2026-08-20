@@ -14,7 +14,7 @@ Design priorities are explicit: precision over volume, structural integrity afte
 
 ---
 
-## Current Status
+**Current Status**
 
 | Item | Value |
 |------|-------|
@@ -35,7 +35,7 @@ Always run against isolated targets under explicit authorisation.
 
 ---
 
-## Design Principles
+**Design Principles**
 
 | Principle | Implementation |
 |-----------|----------------|
@@ -54,7 +54,7 @@ Always run against isolated targets under explicit authorisation.
 
 ---
 
-## Protocol Models
+**Protocol Models**
 
 Built-in models (no extra features required):
 
@@ -70,9 +70,9 @@ Built-in models (no extra features required):
 
 Grammar-enriched aliases: `grammar-ftp`, `g-dns`, `grammar-mqtt`, `g-smb`, …
 
-### Operator-Defined Models (JSON)
+**Operator-Defined Models (JSON)**
 
-```bash
+```text
 # Build with JSON support
 cargo build --release --features json-model
 
@@ -83,7 +83,7 @@ cargo build --release --features json-model
 
 Example schema (`models/custom-example.json`):
 
-```json
+```text
 {
   "name": "custom-example",
   "length_prefixed": true,
@@ -105,9 +105,9 @@ Example schema (`models/custom-example.json`):
 
 Integrity auto-selects `binary` / `binary-le` for `dns`, `mqtt`, `smb`, and `binary-lp*` models.
 
-### Offline Grammar Inference
+**Offline Grammar Inference**
 
-```bash
+```text
 # Inspect seeds and print summary
 ./target/release/nexsiz --infer-model -s seeds/ftp -v
 
@@ -121,7 +121,7 @@ Field-aware mutation respects `FieldSpec.size` (pad/truncate), prefers `FieldSpe
 
 ---
 
-## NXS — Existence After Discovery
+**NXS — Existence After Discovery**
 
 Once the engine surfaces a crash, hang, or other interesting event, optional **NXS** binaries deepen the finding without increasing the size or complexity of the fuzzer core.
 
@@ -138,7 +138,7 @@ Once the engine surfaces a crash, hang, or other interesting event, optional **N
 | `hang/timeout-analyzer` | Multi-shot classification of hard hangs |
 | `external/notify-webhook` | Compact HTTP POST of event metadata |
 
-```bash
+```text
 cd nxs && ./build.sh
 nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs default -v
 nexsiz --nxs intrusive --nxs-list
@@ -149,7 +149,7 @@ Contract, search-path resolution, and rate-limit controls are documented in [`nx
 
 ---
 
-## Architecture
+**Architecture**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -182,9 +182,9 @@ Contract, search-path resolution, and rate-limit controls are documented in [`nx
 
 ---
 
-## Build & Quick Start
+**Build & Quick Start**
 
-```bash
+```text
 # Default (minimal dependencies)
 cargo build --release
 
@@ -228,13 +228,13 @@ cd nxs && ./build.sh && cd ..
 
 ---
 
-## Command-Line Interface
+**Command-Line Interface**
 
 ```
 nexsiz [OPTIONS]
 ```
 
-### Target
+**Target**
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -244,7 +244,7 @@ nexsiz [OPTIONS]
 | `-t`, `--cmd <CMD>` | Spawn target process for local crash monitoring / snapshot | — |
 | `-T`, `--timeout <MS>` | Per-operation timeout (milliseconds) | `500` |
 
-### Protocol & Plugins
+**Protocol & Plugins**
 
 | Flag | Description |
 |------|-------------|
@@ -263,14 +263,14 @@ nexsiz [OPTIONS]
 | `diffsan` | differential + sanitizer + coverage (recommended for deep campaigns) |
 | `expanded` | diffsan + error oracle (maximum sensitivity) |
 
-### Model Inference
+**Model Inference**
 
 | Flag | Description |
 |------|-------------|
 | `--infer-model` | Infer protocol model from `-s` seed directory and exit |
 | `--infer-out <PATH>` | Write inferred model (JSON with `json-model` feature, else human dump) |
 
-### Coverage
+**Coverage**
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -279,7 +279,7 @@ nexsiz [OPTIONS]
 
 Environment: `NEXSIZ_SHM_ID`.
 
-### Campaign Control
+**Campaign Control**
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -294,7 +294,7 @@ Environment: `NEXSIZ_SHM_ID`.
 
 Environment: `NEXSIZ_RPC_SOCK` (same as `-Y`).
 
-### Snapshot / Process Management
+*"Snapshot / Process Management**
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -305,14 +305,14 @@ Environment: `NEXSIZ_RPC_SOCK` (same as `-Y`).
 - `criu` — CRIU dump/restore (requires `--features criu` and `criu` on `PATH`).
 - Snapshot implies local process control; combine with `-t`.
 
-### Execution Limits
+**Execution Limits*"
 
 | Flag | Description |
 |------|-------------|
 | `-x`, `--execs <N>` | Stop after N executions |
 | `-R`, `--runtime <SECS>` | Stop after SECS seconds |
 
-### NXS (Existence Scripts)
+**NXS (Existence Scripts)**
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -326,7 +326,7 @@ Environment: `NEXSIZ_RPC_SOCK` (same as `-Y`).
 Environment: `NEXSIZ_NXS`, `NEXSIZ_NXS_PATH`.  
 Default events: `crash`, `hang` (override via config `nxs_events=…`).
 
-### General
+**General**
 
 | Flag | Description |
 |------|-------------|
@@ -334,7 +334,7 @@ Default events: `crash`, `hang` (override via config `nxs_events=…`).
 | `-?`, `--help` | Show help |
 | `-V`, `--version` | Show version |
 
-### Environment Variables
+**Environment Variables**
 
 | Variable | Purpose |
 |----------|---------|
@@ -344,9 +344,9 @@ Default events: `crash`, `hang` (override via config `nxs_events=…`).
 | `NEXSIZ_NXS` | Equivalent to `--nxs` |
 | `NEXSIZ_NXS_PATH` | Equivalent to `--nxs-path` |
 
-### Examples
+**Examples*"
 
-```bash
+```text
 nexsiz -h 127.0.0.1 -p 21 -m ftp -s seeds/ftp -o out/ftp -v
 nexsiz -h 127.0.0.1 -p 21 -m ftp --nxs default -v
 nexsiz --nxs default --nxs-list
@@ -364,7 +364,7 @@ nexsiz -t "./target_daemon" -Z --snapshot-backend criu -m ftp -v   # needs --fea
 
 ---
 
-## Output Layout
+**Output Layout*"
 
 ```
 output/
@@ -378,7 +378,7 @@ output/
 
 ---
 
-## Operational Notes
+**Operational Notes**
 
 - Clean residual shared-memory maps after campaigns: `rm -f /dev/shm/nexsiz-cov*`.
 - Prefer `-C software` when the target is remote-only (no local process for Frida).
@@ -387,7 +387,7 @@ output/
 
 ---
 
-## License
+**License*"
 
 Apache License 2.0. Intended for operational use by offensive security teams under explicit authorisation and in isolated environments.
 
