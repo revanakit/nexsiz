@@ -1,18 +1,18 @@
-# Nexsiz The Fuzzing 
+# nexsiz the fuzzer 
 
 <p align="center">
   <img src="nexsiz-mascot.png" width="400" height="400" alt="Logo">
 </p>
 
-**Documentation**
-
-[![x](https://img.shields.io/badge/nexsiz-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
-
-**Author**
+**nexsiz author**
 
 [![x](https://img.shields.io/badge/Revana-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/revanakit)
 
-### Stateful Network Protocol Fuzzer
+**documentation**
+
+[![x](https://img.shields.io/badge/nexsiz-000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-blogs/)
+
+## stateful Network Protocol Fuzzer
 
 **Nexsiz** is a high-performance, modular, pure Rust-based network protocol fuzzer designed for deep network protocol testing. It is purpose-built to explore the deepest regions of a protocol's state machine—areas where conventional fuzzers miss structural validity or state context and consequently remain blind.
 
