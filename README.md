@@ -387,7 +387,7 @@ output/
 
 ---
 
-**License*"
+**License**
 
 Apache License 2.0. Intended for operational use by offensive security teams under explicit authorisation and in isolated environments.
 
