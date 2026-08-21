@@ -21,7 +21,7 @@ jobs:
     name: Linux · default
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -48,7 +48,7 @@ jobs:
     name: Linux · json-model
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -74,7 +74,7 @@ jobs:
     name: Linux · libafl
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -100,7 +100,7 @@ jobs:
     name: Linux · libafl + json-model
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -127,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true   # advisory — do not block release if stable fails
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -150,7 +150,7 @@ jobs:
     name: Windows · default
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain (MSVC)
         uses: dtolnay/rust-toolchain@master
@@ -180,7 +180,7 @@ jobs:
     name: Windows · json-model
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain (MSVC)
         uses: dtolnay/rust-toolchain@master
@@ -210,7 +210,7 @@ jobs:
     name: Windows · libafl
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain (MSVC)
         uses: dtolnay/rust-toolchain@master
@@ -240,7 +240,7 @@ jobs:
     name: Windows · libafl + json-model
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain (MSVC)
         uses: dtolnay/rust-toolchain@master
