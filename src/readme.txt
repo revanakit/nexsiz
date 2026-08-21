@@ -1,8 +1,12 @@
-Current Status
+NEXSIZ :: src
 
-Version=0.1.0
-Maturity=Operational/experimental
-Primary platform=Linux(x86_64)
-Default dependencies=libc only
-Optional features=libafl-json-model-criu
-License=Apache-2.0
+Core library and binary entry point.
+
+Organises the entire fuzzer into focused crates-local modules:
+  common, coverage, execution, input, monitor, nxs, platform,
+  plugin, scripting, state.
+
+main.rs owns CLI parsing and campaign bootstrap.
+lib.rs re-exports the public surface for embedding / tests.
+All operational logic lives in the sub-modules; this root
+only wires them together.

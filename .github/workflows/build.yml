@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f agents/frida/nexsiz_cov.js
-          test -f agents/frida/README.md
+          test -f agents/README.md
           echo "Agent files present."
 
       - name: Setup Node.js (syntax check only)
@@ -94,9 +94,9 @@ jobs:
           grep -q 'NEXSIZ_COV_MODE' agents/frida/nexsiz_cov.js
           grep -q 'hitEdge' agents/frida/nexsiz_cov.js
           grep -q 'startStalker\|startExportsMode' agents/frida/nexsiz_cov.js
-          grep -q '/nexsiz-cov' agents/frida/README.md
-          grep -q '65536' agents/frida/README.md
-          grep -q 'SharedMapCoverage\| -C map' agents/frida/README.md
+          grep -q '/nexsiz-cov' agents/README.md
+          grep -q '65536' agents/README.md
+          grep -q 'SharedMapCoverage\| -C map' agents/README.md
           echo "Frida agent SHM protocol contract OK."
 
   # ─────────────────────────────────────────────────────────────
@@ -279,9 +279,6 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
 
       - name: Build release with json-model
         run: cargo build --release --features json-model
