@@ -157,7 +157,7 @@ jobs:
           done
 
       - name: Upload NXS binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nxs-linux-x86_64
           path: nxs/bin/nxs-*
@@ -224,7 +224,7 @@ jobs:
           ./target/release/nexsiz --nxs default --nxs-list || true
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-default
           path: target/release/nexsiz
@@ -261,7 +261,7 @@ jobs:
           ./target/release/nexsiz -V || true
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-libafl
           path: target/release/nexsiz
@@ -295,7 +295,7 @@ jobs:
           ./target/release/nexsiz -V || true
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-json-model
           path: target/release/nexsiz
@@ -332,7 +332,7 @@ jobs:
           ./target/release/nexsiz -V || true
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-libafl-json
           path: target/release/nexsiz
@@ -358,7 +358,7 @@ jobs:
 
       - name: Upload artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-libafl-stable
           path: target/release/nexsiz
@@ -402,7 +402,7 @@ jobs:
           .\target\release\nexsiz.exe --nxs default --nxs-list 2>$null
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-default
           path: target/release/nexsiz.exe
@@ -443,7 +443,7 @@ jobs:
           .\target\release\nexsiz.exe -V 2>$null
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-libafl
           path: target/release/nexsiz.exe
@@ -484,7 +484,7 @@ jobs:
           .\target\release\nexsiz.exe -V 2>$null
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-json-model
           path: target/release/nexsiz.exe
@@ -525,7 +525,7 @@ jobs:
           .\target\release\nexsiz.exe -V 2>$null
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-libafl-json
           path: target/release/nexsiz.exe
