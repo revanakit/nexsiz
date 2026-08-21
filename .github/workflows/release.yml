@@ -38,7 +38,7 @@ jobs:
           ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
           ./target/release/nexsiz --help || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-default
           path: target/release/nexsiz
@@ -64,7 +64,7 @@ jobs:
         run: |
           ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-json-model
           path: target/release/nexsiz
@@ -90,7 +90,7 @@ jobs:
         run: |
           ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-libafl
           path: target/release/nexsiz
@@ -116,7 +116,7 @@ jobs:
         run: |
           ./target/release/nexsiz --version || ./target/release/nexsiz -V || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-linux-x86_64-libafl-json
           path: target/release/nexsiz
@@ -137,7 +137,7 @@ jobs:
       - name: Build release (libafl, stable)
         run: cargo build --release --features libafl
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: success()
         with:
           name: nexsiz-linux-x86_64-libafl-stable
@@ -170,7 +170,7 @@ jobs:
         run: |
           .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-default
           path: target/release/nexsiz.exe
@@ -200,7 +200,7 @@ jobs:
         run: |
           .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-json-model
           path: target/release/nexsiz.exe
@@ -230,7 +230,7 @@ jobs:
         run: |
           .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-libafl
           path: target/release/nexsiz.exe
@@ -260,7 +260,7 @@ jobs:
         run: |
           .\target\release\nexsiz.exe --version 2>$null; if (-not $?) { .\target\release\nexsiz.exe -V 2>$null }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nexsiz-windows-x86_64-libafl-json
           path: target/release/nexsiz.exe
