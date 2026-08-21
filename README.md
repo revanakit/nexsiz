@@ -364,7 +364,7 @@ nexsiz -t "./target_daemon" -Z --snapshot-backend criu -m ftp -v   # needs --fea
 
 ---
 
-**Output Layout*"
+**Output Layout**
 
 ```
 output/
@@ -395,4 +395,4 @@ Apache License 2.0. Intended for operational use by offensive security teams und
 
 **Documentation**
 
-[![x](https://img.shields.io/badge/nexsiz--000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-documentation/)
+[![x](https://img.shields.io/badge/nexsiz000000?style=for-the-badge&logo=githubpages&logoColor=white)](https://revanakit.github.io/nexsiz-documentation/)
