@@ -1,4 +1,4 @@
-# NXS Contract — Nexsiz Existence Scripts
+**NXS Contract — Nexsiz Existence Scripts**
 
 **Version:** 0.1  
 **Status:** Binding for all official and custom NXS  
@@ -11,13 +11,13 @@ NXS are **executable programs** (binary or `chmod +x` script) triggered after an
 
 ---
 
-## 1. Invocation
+**1. Invocation**
 
-```
+```text
 nxs-<name> [GLOBAL OPTIONS] [SCRIPT-SPECIFIC OPTIONS]
 ```
 
-### Global options (mandatory support)
+**Global options (mandatory support)**
 
 | Option | Required | Description |
 |--------|----------|-------------|
@@ -37,7 +37,7 @@ nxs-<name> [GLOBAL OPTIONS] [SCRIPT-SPECIFIC OPTIONS]
 
 ---
 
-## 2. Exit Codes (mandatory)
+**2. Exit Codes (mandatory)**
 
 | Code | Meaning |
 |------|---------|
@@ -50,13 +50,13 @@ nxs-<name> [GLOBAL OPTIONS] [SCRIPT-SPECIFIC OPTIONS]
 
 ---
 
-## 3. Metadata JSON (`--meta`)
+**3. Metadata JSON (`--meta`)**
 
 Nexsiz writes this file on spawn (or the operator supplies it). NXS **must** ignore unknown fields.
 
 Minimal schema:
 
-```json
+```text
 {
   "nexsiz_version": "0.1.0",
   "event": "crash",
@@ -89,9 +89,9 @@ Minimal schema:
 
 ---
 
-## 4. Output Artefacts (recommended when `--out` is given)
+**4. Output Artefacts (recommended when `--out` is given)**
 
-```
+```text
 <out>/
 ├── report.json
 ├── repro/
@@ -101,7 +101,7 @@ Minimal schema:
 
 Suggested `report.json` fields (example of a successful secondary finding):
 
-```json
+```text
 {
   "nxs_id": "crash/auto-repro",
   "nxs_version": "1.0.0",
@@ -124,7 +124,7 @@ Suggested `report.json` fields (example of a successful secondary finding):
 
 ---
 
-## 5. Stdio
+**5. Stdio**
 
 - **stdout** — concise; optional single JSON line at the end (machine-friendly)
 - **stderr** — human log, progress, errors (`-v`)
@@ -132,7 +132,7 @@ Suggested `report.json` fields (example of a successful secondary finding):
 
 ---
 
-## 6. Identity (`--version` / `nxs.toml`)
+**6. Identity (`--version` / `nxs.toml`)**
 
 | Field | Example |
 |-------|---------|
@@ -145,7 +145,7 @@ Suggested `report.json` fields (example of a successful secondary finding):
 
 ---
 
-## 7. Checklist (every NXS must)
+**7. Checklist (every NXS must)**
 
 - [ ] Executable (`chmod +x` / `.exe`)
 - [ ] Support `--crash`, `--target`, `--meta`, `--out`, `--help`, `--version`
@@ -163,7 +163,7 @@ Recommended:
 
 ---
 
-## 8. Search Path Priority (Nexsiz side)
+**8. Search Path Priority (Nexsiz side)**
 
 1. Absolute path given to `--nxs`
 2. `NEXSIZ_NXS_PATH` (colon-separated)
