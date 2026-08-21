@@ -1,4 +1,4 @@
-# NXS — Nexsiz Existence Scripts
+**NXS — Nexsiz Existence Scripts**
 
 Post-crash / post-event **executable** follow-up tools for Nexsiz.
 
@@ -6,7 +6,7 @@ Post-crash / post-event **executable** follow-up tools for Nexsiz.
 Nexsiz (discovery)  →  crash / hang / interesting  →  NXS (existence & depth)
 ```
 
-## Official Set (complete)
+**Official Set (complete)**
 
 Source of truth for categories and membership is `nxs/categories.toml`. The table below mirrors the current official set:
 
@@ -23,31 +23,31 @@ Source of truth for categories and membership is `nxs/categories.toml`. The tabl
 | `hang/timeout-analyzer` | `nxs-timeout-analyzer` | hang | Hard hang confirmed |
 | `external/notify-webhook` | `nxs-notify-webhook` | external | — (HTTP notify) |
 
-### auth-escalation notes
+**auth-escalation notes**
 
 - **Distinct from auth-bypass**: bypass tries unauthenticated entry; escalation tries *elevated* commands/paths after an anomaly.
 - Primary models: **FTP**, **SMTP**, **HTTP**.
 - Phase 2 features: confidence (`high`/`medium`/`low`), per-shot artefacts under `--out/shots/`, rich `report.extra`.
 - Example: `nexsiz … --nxs crash/auth-escalation -v` or via `--nxs intrusive`.
 
-## Build
+**Build**
 
-```bash
+```text
 cd nxs && ./build.sh
 # → nxs/bin/nxs-*
 ```
 
-## Contract smoke tests
+**Contract smoke tests**
 
-```bash
+```text
 cd nxs && ./tests/e2e.sh
 # optional live target:
 NXS_E2E_TARGET=127.0.0.1:21 ./tests/e2e.sh
 ```
 
-## Auto-spawn
+**Auto-spawn**
 
-```bash
+```text
 nexsiz -h 10.0.0.5 -p 21 -m ftp --nxs default -v
 nexsiz --nxs default --nxs-list          # resolve paths, exit
 nexsiz ... --nxs intrusive --nxs-cooldown 60 --nxs-max-per-event 20 -v
@@ -56,7 +56,7 @@ nexsiz ... --nxs crash/chain-repro -v    # explicit single NXS
 nexsiz ... --nxs external -v            # webhook (set NXS_WEBHOOK_URL)
 ```
 
-### Rate limits
+**Rate limits**
 
 | Flag | Default | Meaning |
 |------|---------|---------|
@@ -64,7 +64,7 @@ nexsiz ... --nxs external -v            # webhook (set NXS_WEBHOOK_URL)
 | `--nxs-max-per-event` | 0 (∞) | Cap per event type |
 | `--nxs-max-total` | 0 (∞) | Cap total spawns |
 
-### Search path
+**Search path**
 
 1. Absolute `--nxs` path  
 2. `NEXSIZ_NXS_PATH` / `--nxs-path`  
@@ -72,7 +72,7 @@ nexsiz ... --nxs external -v            # webhook (set NXS_WEBHOOK_URL)
 4. `./nxs/bin/`  
 5. Relative to nexsiz binary  
 
-### Async exit-code observation (design requirement)
+**Async exit-code observation (design requirement)**
 
 Spawn is **non-blocking**. A dedicated background reaper thread (`src/nxs/reaper.rs`) retains the `Child` handles and polls them with non-blocking `try_wait`:
 
@@ -85,9 +85,9 @@ Spawn is **non-blocking**. A dedicated background reaper thread (`src/nxs/reaper
 
 This design keeps campaign throughput independent of NXS latency while still capturing every secondary indication.
 
-### Webhook
+**Webhook**
 
-```bash
+```text
 export NXS_WEBHOOK_URL=http://127.0.0.1:9000/hook
 nexsiz ... --nxs external -v
 # or manual:
@@ -96,9 +96,9 @@ nexsiz ... --nxs external -v
 
 HTTPS is not supported in the pure-stdlib client; terminate TLS at a local proxy or use `NXS_NOTIFY_CMD` with curl from `save-notify`.
 
-## Custom NXS
+**Custom NXS**
 
-```bash
+```text
 cp -r nxs/templates/rust ~/.nexsiz/nxs/src/my-chain
 cd ~/.nexsiz/nxs/src/my-chain && cargo build --release
 cp target/release/nxs-* ~/.nexsiz/nxs/bin/
