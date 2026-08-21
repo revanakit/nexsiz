@@ -1,8 +1,8 @@
-# Security Policy — Nexsiz
+**Security Policy — Nexsiz**
 
 **Nexsiz** is an offensive security tool intended exclusively for authorised security testing, research, and red-team / APT simulation exercises.
 
-## Supported Versions
+**Supported Versions**
 
 | Version | Supported |
 |---------|-----------|
@@ -11,7 +11,7 @@
 
 Only the latest tagged release on the `main` branch receives security attention.
 
-## Authorised Use Only
+**Authorised Use Only**
 
 Nexsiz must be used **only** against systems and networks for which the operator has explicit, written authorisation.
 
@@ -19,7 +19,7 @@ Unauthorised use against third-party systems, production environments without ap
 
 The authors and maintainers accept **no liability** for misuse.
 
-## Reporting a Vulnerability
+**Reporting a Vulnerability**
 
 If you discover a security issue **in Nexsiz itself** (crash in the fuzzer, privilege escalation in a helper, unsafe handling of untrusted input inside the tool, etc.):
 
@@ -33,7 +33,7 @@ If you discover a security issue **in Nexsiz itself** (crash in the fuzzer, priv
 
 We aim to acknowledge reports within a reasonable timeframe and will coordinate disclosure once a fix is available.
 
-## Scope
+**Scope**
 
 **In scope**
 - Vulnerabilities in the Nexsiz binary, NXS scripts, Python client, or build scripts that can be triggered by a malicious target or crafted corpus.
@@ -44,7 +44,7 @@ We aim to acknowledge reports within a reasonable timeframe and will coordinate 
 - Missing features, performance issues, or documentation gaps.
 - Issues that require the operator to deliberately disable safety mechanisms or run with elevated privileges in an unsafe manner.
 
-## Operational Hardening Recommendations
+**Operational Hardening Recommendations**
 
 Operators are expected to:
 
@@ -54,7 +54,7 @@ Operators are expected to:
 - Treat all crash artefacts and NXS output as potentially sensitive.
 - Keep the tool and its dependencies updated.
 
-## Cryptography & Key Material
+**Cryptography & Key Material**
 
 When using encryptor plugins (`-e chacha20`, `-e tls-record`, etc.):
 
@@ -62,7 +62,7 @@ When using encryptor plugins (`-e chacha20`, `-e tls-record`, etc.):
 - Never commit real keys or nonces into configuration files that are tracked by git.
 - Rotate keys between campaigns when operationally required.
 
-## Third-Party Components
+**Third-Party Components**
 
 Optional features pull in:
 - LibAFL (when built with `--features libafl`)
