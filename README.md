@@ -294,7 +294,7 @@ Environment: `NEXSIZ_SHM_ID`.
 
 Environment: `NEXSIZ_RPC_SOCK` (same as `-Y`).
 
-*"Snapshot / Process Management**
+**Snapshot / Process Management**
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -305,7 +305,7 @@ Environment: `NEXSIZ_RPC_SOCK` (same as `-Y`).
 - `criu` — CRIU dump/restore (requires `--features criu` and `criu` on `PATH`).
 - Snapshot implies local process control; combine with `-t`.
 
-**Execution Limits*"
+**Execution Limits**
 
 | Flag | Description |
 |------|-------------|
@@ -344,7 +344,7 @@ Default events: `crash`, `hang` (override via config `nxs_events=…`).
 | `NEXSIZ_NXS` | Equivalent to `--nxs` |
 | `NEXSIZ_NXS_PATH` | Equivalent to `--nxs-path` |
 
-**Examples*"
+**Examples**
 
 ```text
 nexsiz -h 127.0.0.1 -p 21 -m ftp -s seeds/ftp -o out/ftp -v
